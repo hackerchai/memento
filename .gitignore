@@ -13,7 +13,6 @@
 
 # Go workspace directory
 /vendor/
-/pkg/
 /bin/
 
 # Air specific files
