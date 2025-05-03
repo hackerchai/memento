@@ -1,0 +1,576 @@
+definitions:
+  entity.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 50
+        minLength: 2
+        type: string
+      password:
+        maxLength: 72
+        minLength: 7
+        type: string
+      role:
+        enum:
+        - 0
+        - 1
+        - 2
+        type: integer
+    required:
+    - email
+    - name
+    - password
+    - role
+    type: object
+  entity.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  entity.LoginResponse:
+    properties:
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/entity.UserPublic'
+    type: object
+  entity.RegisterRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 50
+        minLength: 2
+        type: string
+      password:
+        maxLength: 72
+        minLength: 7
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  entity.UpdateEmailRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  entity.UpdateNameRequest:
+    properties:
+      name:
+        maxLength: 50
+        minLength: 2
+        type: string
+    required:
+    - name
+    type: object
+  entity.UpdatePasswordRequest:
+    properties:
+      new_password:
+        maxLength: 72
+        minLength: 7
+        type: string
+      old_password:
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
+  entity.UserPublic:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  entity.UserSelf:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        description: Role as string for clarity
+        type: string
+    type: object
+  response.ErrorResponse:
+    properties:
+      code:
+        example: "00001"
+        type: string
+      details: {}
+      message:
+        example: Error message
+        type: string
+    type: object
+  response.PaginationResponse:
+    properties:
+      data:
+        description: Data for the current page
+      page:
+        description: Current page number
+        type: integer
+      total:
+        description: Total number of items
+        type: integer
+    type: object
+  response.SuccessResponse:
+    properties:
+      code:
+        example: "00000"
+        type: string
+      data: {}
+      message:
+        example: success
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user and returns a JWT token upon successful login.
+      parameters:
+      - description: User login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/entity.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully logged in
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.LoginResponse'
+              type: object
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Invalid email or password (code: 01002)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Log in a user
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account based on the provided details.
+      parameters:
+      - description: User registration details
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/entity.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully registered user
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.UserPublic'
+              type: object
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "409":
+          description: 'Email already registered (code: 01003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - auth
+  /users/email:
+    put:
+      consumes:
+      - application/json
+      description: Updates the authenticated user's email address. Checks for email
+        uniqueness.
+      parameters:
+      - description: New email address
+        in: body
+        name: email
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdateEmailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email updated successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: 'Email already taken (code: 01005)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user email
+      tags:
+      - users
+  /users/name:
+    put:
+      consumes:
+      - application/json
+      description: Updates the authenticated user's display name.
+      parameters:
+      - description: New display name
+        in: body
+        name: name
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdateNameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Name updated successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user name
+      tags:
+      - users
+  /users/password:
+    put:
+      consumes:
+      - application/json
+      description: Updates the authenticated user's password after verifying the old
+        password.
+      parameters:
+      - description: Old and new password details
+        in: body
+        name: password
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdatePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Password updated successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001) or incorrect
+            old password (code: 01004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user password
+      tags:
+      - users
+  /users/profile:
+    get:
+      description: Retrieves the profile information (ID, name, email, role, created_at)
+        for the currently authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved user profile
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.UserSelf'
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'User not found (code: 01007)" // Should not happen if token
+            is valid'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get own user profile
+      tags:
+      - users
+  /users/root:
+    get:
+      description: Retrieves a paginated list of all users. This endpoint requires
+        root privileges.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved user list
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.UserPublic'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters (code: 00004)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get list of all users (Root only)
+      tags:
+      - users
+      - root
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account. This endpoint requires root privileges.
+      parameters:
+      - description: New user details
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/entity.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.UserPublic'
+              type: object
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: 'Email already registered (code: 01003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new user (Root only)
+      tags:
+      - users
+      - root
+  /users/root/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a user account by ID. This endpoint requires root privileges.
+      parameters:
+      - description: User ID to delete
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User deleted successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Invalid user ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'User not found (code: 01007)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or specific service error)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a user (Root only)
+      tags:
+      - users
+      - root
+swagger: "2.0"
