@@ -4,13 +4,10 @@ import (
 	"go.uber.org/fx"
 )
 
-// Module exports repository related dependencies.
-var Module = fx.Module("repository",
-	fx.Provide(
-		fx.Annotate(
-			NewUserRepository,
-			fx.ParamTags(``, ``),
-		),
-		// Add other repository providers here
-	),
+// Module exports dependency constructors for repository implementations.
+var Module = fx.Options(
+	fx.Provide(NewUserRepository),
+	fx.Provide(NewCategoryRepository),
+	fx.Provide(NewTagRepository),
+	fx.Provide(NewArticleRepository),
 )
