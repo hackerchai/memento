@@ -1,0 +1,44 @@
+# .air.toml
+# Config file for Air - https://github.com/cosmtrek/air
+# Creates a runnable binary that contains all dependencies needed to run the application.
+
+# Working directory
+root = "."
+# Directory where temporary files are stored
+tmp_dir = "tmp"
+
+[build]
+# Command to build the binary
+cmd = "go build -o ./tmp/main ./cmd/memento_server/"
+# Binary file to run
+bin = "tmp/main"
+# Files and directories to watch for changes
+include_ext = ["go", "tpl", "tmpl", "html"]
+# Directories to exclude from watching
+exclude_dir = ["assets", "tmp", "vendor", "testdata"]
+# Files and directories to watch explicitly
+include_dir = []
+# Files and directories to ignore explicitly
+exclude_file = []
+# Regex patterns for files or directories to exclude
+exclude_regex = ["_test.go"]
+# Files and directories to follow symlinks for
+follow_symlink = true
+# Log name for the builder process
+log = "air-build.log"
+# Delay between file change detection and build triggering (in milliseconds)
+delay = 1000 # ms
+# Stop running the old binary process when a new build starts
+stop_on_error = true
+# Send interrupt signal instead of kill signal to the running process
+send_interrupt = false
+# Delay after killing the process (in milliseconds)
+kill_delay = 500 # ms
+
+[log]
+# Show log time
+time = true
+
+[misc]
+# Delete tmp directory on exit
+clean_on_exit = true

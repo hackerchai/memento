@@ -1,0 +1,27 @@
+[app]
+debug_mode = true
+
+[server]
+address = ":8080"
+
+[database]
+driver = "pg"     # Options: "pg", "mysql", "sqlite"
+source = "postgres://testuser:testpassword@localhost:5432/memento_test?sslmode=disable" # Connection string or file path
+# For SQLite: "file:memento.db"
+# For PostgreSQL: "postgresql://user:password@localhost:5432/memento?sslmode=disable"
+# For MySQL: "user:password@tcp(localhost:3306)/memento?parseTime=true"
+
+[jwt]
+secret = "you_must_change_this_into_secret_str" # Change this!
+access_token_duration = "24h"                              # e.g., 15m, 1h, 24h
+
+[log]
+enable = true
+level = "debug" # Options: "trace", "debug", "info", "warn", "error", "fatal", "panic"
+file = ""      # Leave empty to log to stdout/stderr, or specify a path like "logs/memento.log"
+max_size = 100 # Max size in megabytes
+max_age = 7    # Max days to keep old logs
+max_backups = 3 # Max number of old log files
+compress = false # Compress rotated files
+beautify = true  # Enable pretty console output
+trace = true     # Enable automatic trace/request ID injection
