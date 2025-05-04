@@ -40,7 +40,7 @@ VALUES (
     '00000000-0000-0000-0000-000000000001', -- Fixed UUID for root user
     'root',
     'root@localhost.local',
-    '$argon2id$v=19$m=65536,t=3,p=4$YWFhYWFhYWFhYWFhYWFhYQ$Fq6v1NlqJ/0P5p3Xh8z7kM3j0iW4T6YtQv3o1p5L9bA',
+    '$argon2id$v=19$m=16,t=2,p=1$MTIzNDU2Nzg$sZdZ0NAeciPMrU1YVkD/rQ',
     2 -- RoleRoot
 )
 ON CONFLICT (email) DO NOTHING; -- Avoid errors if already exists
