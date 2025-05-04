@@ -66,4 +66,16 @@ var (
 	ErrRecordNotFound = New(http.StatusNotFound, "02001", "Record not found")
 
 	// Add more codes as needed for other modules (e.g., web scraping)
+
+	// Auth Errors (01xxx)
+	ErrTokenInvalid      = New(http.StatusUnauthorized, "01007", "Token is invalid")
+	ErrTokenExpired      = New(http.StatusUnauthorized, "01008", "Token has expired")
+	ErrIncorrectPassword = New(http.StatusUnauthorized, "01009", "Incorrect password")
+	ErrEmailTaken        = New(http.StatusConflict, "01010", "Email already taken")
+	ErrForbidden         = New(http.StatusForbidden, "01011", "Forbidden")
+
+	// Article Errors (02xxx)
+	ErrArticleConflict = New(http.StatusConflict, "02001", "Article already exists")
+
+	// Add more error types here
 )

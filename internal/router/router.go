@@ -1,6 +1,8 @@
 package router
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/fx"
 
@@ -22,15 +24,34 @@ var Module = fx.Module("router",
 type RegisterRoutesParams struct {
 	fx.In
 
-	App         *fiber.App
-	Config      *config.Config
-	Logger      *xlog.Logger
-	AuthHandler *api.AuthHandler
-	UserHandler *api.UserHandler
+	App            *fiber.App
+	Config         *config.Config
+	Logger         *xlog.Logger
+	AuthHandler    *api.AuthHandler
+	UserHandler    *api.UserHandler
+	ArticleHandler *api.ArticleHandler
+	SSEHandler     *api.SSEHandler
 }
 
 // RegisterRoutes registers all application routes.
 func RegisterRoutes(p RegisterRoutesParams) {
+	// --- Static File Serving ---
+	// Serve cached images
+	// TODO: Make the public prefix ("/assets/images") configurable?
+	publicImagePrefix := "/assets/images"
+	localImageBasePath := p.Config.Storage.Local.BasePath // Get base path from config
+	if localImageBasePath == "" {
+		localImageBasePath = "assets/images" // Fallback to default if not set
+	}
+	p.App.Static(publicImagePrefix, localImageBasePath, fiber.Static{
+		Compress:  true,  // Enable compression
+		ByteRange: true,  // Enable byte range requests
+		Browse:    false, // Disable directory browsing
+		MaxAge:    3600,  // Cache for 1 hour (adjust as needed)
+	})
+	p.Logger.InfoX(context.Background()).Str("prefix", publicImagePrefix).Str("path", localImageBasePath).Msg("Serving static images")
+
+	// --- API Routes ---
 	// Group routes
 	apiGroup := p.App.Group("/api/v1")
 
@@ -39,20 +60,29 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	authGroup.Post("/register", p.AuthHandler.Register)
 	authGroup.Post("/login", p.AuthHandler.Login)
 
-	// User routes (protected)
-	userGroup := apiGroup.Group("/users")
-	userGroup.Use(middleware.AuthMiddleware(p.Config, p.Logger))
+	// Protected routes (require auth middleware)
+	protected := apiGroup.Group("", middleware.AuthMiddleware(p.Config, p.Logger))
 
-	// Routes for all authenticated users
+	// User routes
+	userGroup := protected.Group("/users")
 	userGroup.Get("/profile", p.UserHandler.GetProfile)
 	userGroup.Put("/password", p.UserHandler.UpdatePassword)
 	userGroup.Put("/email", p.UserHandler.UpdateEmail)
 	userGroup.Put("/name", p.UserHandler.UpdateName)
 
-	// Routes for root users only
+	// Root only user routes
 	rootGroup := userGroup.Group("/root")
 	rootGroup.Use(middleware.RootOnly())
 	rootGroup.Get("/", p.UserHandler.GetUserList)
 	rootGroup.Post("/", p.UserHandler.CreateUser)
 	rootGroup.Delete("/:id", p.UserHandler.DeleteUser)
+
+	// Article routes
+	articleGroup := protected.Group("/articles")
+	articleGroup.Post("", p.ArticleHandler.CreateArticle)
+	// TODO: Add other article routes (GET, DELETE etc.) later
+
+	// SSE route
+	sseGroup := protected.Group("/sse")
+	sseGroup.Get("", p.SSEHandler.ConnectSSE)
 }

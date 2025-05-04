@@ -10,4 +10,5 @@ var Module = fx.Options(
 	fx.Provide(NewCategoryRepository),
 	fx.Provide(NewTagRepository),
 	fx.Provide(NewArticleRepository),
+	fx.Provide(NewAppConfigRepository),
 )

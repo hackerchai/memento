@@ -160,19 +160,18 @@ func (r *ArticleRepository) Update(ctx context.Context, article *entity.Article,
 		return errors.New("article ID and user ID are required for update")
 	}
 
-	// Optional: Check URL uniqueness if URL is being updated (and not the same as original)
-	// This requires fetching the original article first, which adds complexity.
-	// Simpler approach: rely on the database unique constraint to fail if URL is changed to an existing one.
-
 	txErr := r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Update the main article fields
-		// Exclude relations from the update model data automatically
+		// Update the main article fields, explicitly listing columns to update.
+		// Exclude URL, UserID, CreatedAt, and potentially ID itself from the SET clause.
 		res, err := tx.NewUpdate().
 			Model(article).
+			// Specify columns to avoid updating URL/UserID/CreatedAt
+			Set("title = ?, html = ?, author = ?, description = ?, plain_text = ?, llm_description = ?, og_image_url = ?, is_offline = ?, status = ?, updated_at = NOW()",
+				article.Title, article.Html, article.Author, article.Description, article.PlainText, article.LLMDescription, article.OgImageURL, article.IsOffline, article.Status).
 			Where("id = ? AND user_id = ?", article.ID, article.UserID).
 			Exec(ctx)
 		if err != nil {
-			r.logger.ErrorX(ctx).Err(err).Stringer("id", article.ID).Stringer("userID", article.UserID).Msg("Failed to update article in transaction")
+			r.logger.ErrorX(ctx).Err(err).Stringer("id", article.ID).Stringer("userID", article.UserID).Msg("Failed to update article core fields in transaction")
 			return err
 		}
 		rowsAffected, _ := res.RowsAffected()
@@ -215,6 +214,10 @@ func (r *ArticleRepository) Update(ctx context.Context, article *entity.Article,
 	})
 
 	if txErr != nil {
+		// Log error but don't wrap sql.ErrNoRows if that's the case
+		if !errors.Is(txErr, sql.ErrNoRows) {
+			r.logger.ErrorX(ctx).Err(txErr).Stringer("id", article.ID).Msg("Article update transaction failed")
+		}
 		return txErr
 	}
 

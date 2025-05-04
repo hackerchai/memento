@@ -16,5 +16,13 @@ var Module = fx.Module("api",
 			NewUserHandler,
 			fx.ParamTags(``, ``),
 		),
+		fx.Annotate(
+			NewArticleHandler,
+			fx.ParamTags(``, ``),
+		),
+		fx.Annotate(
+			NewSSEHandler,
+			fx.ParamTags(``, ``),
+		),
 	),
 )

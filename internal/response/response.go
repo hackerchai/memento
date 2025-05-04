@@ -10,10 +10,10 @@ import (
 	"github.com/hackerchai/memento/pkg/xlog"
 )
 
-// SuccessResponse defines the standard success response structure.
+// SuccessResponse defines the structure for successful API responses.
 type SuccessResponse struct {
-	Code    string      `json:"code" example:"00000"`
-	Message string      `json:"message" example:"success"`
+	Code    string      `json:"code"` // Use a standard success code
+	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
@@ -49,18 +49,27 @@ const SuccessCode = "00000"
 
 // Respond sends a standard success JSON response (HTTP 200 OK).
 func Respond(c *fiber.Ctx, data interface{}) error {
-	return c.Status(http.StatusOK).JSON(SuccessResponse{
+	return c.Status(fiber.StatusOK).JSON(SuccessResponse{
 		Code:    SuccessCode,
-		Message: "success",
+		Message: "Success",
 		Data:    data,
 	})
 }
 
 // RespondCreated sends a standard success JSON response (HTTP 201 Created).
 func RespondCreated(c *fiber.Ctx, data interface{}) error {
-	return c.Status(http.StatusCreated).JSON(SuccessResponse{
+	return c.Status(fiber.StatusCreated).JSON(SuccessResponse{
 		Code:    SuccessCode,
-		Message: "success",
+		Message: "Created",
+		Data:    data,
+	})
+}
+
+// RespondAccepted sends a standard success response with status 202 Accepted.
+func RespondAccepted(c *fiber.Ctx, data interface{}) error {
+	return c.Status(fiber.StatusAccepted).JSON(SuccessResponse{
+		Code:    SuccessCode, // Use the same success code
+		Message: "Accepted",  // Indicate request is accepted for processing
 		Data:    data,
 	})
 }

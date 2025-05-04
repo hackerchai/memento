@@ -1,19 +1,27 @@
 package service
 
 import (
+	"time"
+
 	"go.uber.org/fx"
+
+	"github.com/hackerchai/memento/internal/auth"
+	"github.com/hackerchai/memento/internal/config"
+	"github.com/hackerchai/memento/internal/repository"
+	"github.com/hackerchai/memento/pkg/xlog"
 )
 
-// Module exports service related dependencies.
-var Module = fx.Module("service",
+// Module exports dependency constructors for service implementations.
+var Module = fx.Options(
 	fx.Provide(
-		// Annotate NewUserService to inject dependencies including logger
-		fx.Annotate(
-			NewUserService,
-			// Add tags if needed, e.g., for named dependencies
-			// Params: UserRepository, JWTMaker, time.Duration, *xlog.Logger
-			fx.ParamTags(``, ``, ``, ``),
-		),
-		// Add other service providers here
+		// Provide NewUserService with correct dependencies
+		func(userRepo *repository.UserRepository, appConfigRepo *repository.AppConfigRepository, jwtMaker *auth.JWTMaker, cfg *config.Config, logger *xlog.Logger) *UserService {
+			// FIXME: Replace with actual config value for JWT duration
+			// Example: tokenDuration := time.Duration(cfg.JWT.YourExpiryField) * time.Minute
+			tokenDuration := 60 * time.Minute // Defaulting to 60 minutes
+			return NewUserService(userRepo, appConfigRepo, jwtMaker, tokenDuration, logger)
+		},
+		NewArticleService, // This now implicitly requires AppConfigRepository
+		// fx.Provide(NewAppConfigService), // Commented out until implemented
 	),
 )
