@@ -13,6 +13,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Log      LogConfig      `mapstructure:"log"`
+	Storage  StorageConfig  `mapstructure:"storage"`
 }
 
 // AppConfig holds application specific configuration.
@@ -23,6 +24,7 @@ type AppConfig struct {
 // ServerConfig holds server related configuration.
 type ServerConfig struct {
 	Address string `mapstructure:"address"`
+	BaseURL string `mapstructure:"base_url"` // Base URL for constructing public links
 }
 
 // DatabaseConfig holds database connection details.
@@ -50,6 +52,17 @@ type LogConfig struct {
 	Trace      bool   `mapstructure:"trace"`
 }
 
+// StorageConfig holds storage related configurations.
+type StorageConfig struct {
+	Local LocalStorageConfig `mapstructure:"local"`
+	// Add S3Config, MinioConfig etc. here later
+}
+
+// LocalStorageConfig holds configurations for local filesystem storage.
+type LocalStorageConfig struct {
+	BasePath string `mapstructure:"base_path"`
+}
+
 // LoadConfig reads configuration from file or environment variables.
 func LoadConfig(path string) (config Config, err error) {
 	viper.AddConfigPath(path)
@@ -61,6 +74,7 @@ func LoadConfig(path string) (config Config, err error) {
 	// Set default values (optional but recommended)
 	viper.SetDefault("app.debug_mode", false)
 	viper.SetDefault("server.address", ":8080")
+	viper.SetDefault("server.base_url", "http://localhost:8080") // Default base URL
 	viper.SetDefault("database.driver", "sqlite")
 	viper.SetDefault("database.source", "memento.db")
 	viper.SetDefault("jwt.secret", "change_this_secret")
@@ -74,6 +88,7 @@ func LoadConfig(path string) (config Config, err error) {
 	viper.SetDefault("log.compress", false)
 	viper.SetDefault("log.beautify", false)
 	viper.SetDefault("log.trace", true)
+	viper.SetDefault("storage.local.base_path", "assets/images")
 
 	err = viper.ReadInConfig()
 	// Ignore 'config file not found' error if defaults are sufficient

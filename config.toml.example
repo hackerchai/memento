@@ -3,6 +3,7 @@ debug_mode = true
 
 [server]
 address = ":8080"
+base_url = "http://localhost:8080" # The base URL of the server, used for constructing public links (e.g., for cached images)
 
 [database]
 driver = "pg"     # Options: "pg", "mysql", "sqlite"
@@ -25,3 +26,6 @@ max_backups = 3 # Max number of old log files
 compress = false # Compress rotated files
 beautify = true  # Enable pretty console output
 trace = true     # Enable automatic trace/request ID injection
+
+[storage.local]
+base_path = "assets/images" # Base directory for locally cached images. Ensure this path is writable by the application.
