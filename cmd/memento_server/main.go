@@ -17,10 +17,13 @@ import (
 	"github.com/hackerchai/memento/internal/api"
 	"github.com/hackerchai/memento/internal/auth"
 	"github.com/hackerchai/memento/internal/config"
+	"github.com/hackerchai/memento/internal/entity"
 	"github.com/hackerchai/memento/internal/middleware"
 	"github.com/hackerchai/memento/internal/repository"
 	"github.com/hackerchai/memento/internal/router"
 	"github.com/hackerchai/memento/internal/service"
+	"github.com/hackerchai/memento/internal/sse"
+	"github.com/hackerchai/memento/internal/storage"
 	orig_db "github.com/hackerchai/memento/pkg/db"
 	"github.com/hackerchai/memento/pkg/xlog"
 )
@@ -41,7 +44,20 @@ func main() {
 			provideXlogLogger,
 			// Database Connection
 			func(cfg *config.Config) (*bun.DB, error) {
-				return orig_db.NewDBConnection(cfg.Database.Driver, cfg.Database.Source, cfg.App.DebugMode)
+				db, err := orig_db.NewDBConnection(cfg.Database.Driver, cfg.Database.Source, cfg.App.DebugMode)
+				if err != nil {
+					return nil, err
+				}
+				// Register all models in a single call, adjust order for M2M
+				db.RegisterModel(
+					(*entity.User)(nil),
+					(*entity.Category)(nil),
+					(*entity.ArticleTag)(nil), // Register join table first (or early)
+					(*entity.Tag)(nil),        // Then register models involved in M2M
+					(*entity.Article)(nil),    // Then register models involved in M2M
+				)
+
+				return db, nil
 			},
 			// Fiber App (depends on logger)
 			provideFiberApp,
@@ -49,8 +65,10 @@ func main() {
 		// Include modules
 		auth.Module,
 		repository.Module,
+		storage.Module,
 		service.Module,
 		api.Module,
+		sse.Module,
 		router.Module,
 
 		// Invoke setup functions
