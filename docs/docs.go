@@ -15,6 +15,96 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/articles": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Accepts a URL, optionally a category name and tags. Creates a placeholder article immediately and processes the full content in the background.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "articles"
+                ],
+                "summary": "Submit a URL to save as an article",
+                "parameters": [
+                    {
+                        "description": "Article URL and optional metadata",
+                        "name": "article",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CreateArticleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Article accepted for processing, returns initial article data (with ID and processing status)",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.ArticleResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (URL format, etc. - code: 00004) or invalid JSON (code: 00003)",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict - Article with this URL already exists (code: 02001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (failed to create placeholder, etc. - code: 00001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates a user and returns a JWT token upon successful login.",
@@ -166,6 +256,43 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal server error (code: 00001 or specific service error)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sse": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Establishes an SSE connection to receive real-time updates (e.g., article processing status).",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "sse"
+                ],
+                "summary": "Establish Server-Sent Event connection",
+                "responses": {
+                    "200": {
+                        "description": "SSE stream established",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (failed to establish stream - code: 00001)",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -727,13 +854,96 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.CreateArticleRequest": {
+            "type": "object",
+            "required": [
+                "url"
+            ],
+            "properties": {
+                "category_name": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.ArticleResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "description": "Html        *string              ` + "`" + `json:\"-\"` + "`" + ` // Explicitly exclude HTML from JSON/Swagger by default",
+                    "type": "string"
+                },
+                "category_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_offline": {
+                    "type": "boolean"
+                },
+                "llm_description": {
+                    "description": "PlainText   *string              ` + "`" + `json:\"-\"` + "`" + ` // Explicitly exclude PlainText",
+                    "type": "string"
+                },
+                "og_image_url": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/entity.ArticleStatus"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "entity.ArticleStatus": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2
+            ],
+            "x-enum-comments": {
+                "StatusCompleted": "Successfully processed",
+                "StatusFailed": "Processing failed",
+                "StatusPending": "Initial state or processing"
+            },
+            "x-enum-varnames": [
+                "StatusPending",
+                "StatusCompleted",
+                "StatusFailed"
+            ]
+        },
         "entity.CreateUserRequest": {
             "type": "object",
             "required": [
                 "email",
                 "name",
-                "password",
-                "role"
+                "password"
             ],
             "properties": {
                 "email": {
@@ -921,13 +1131,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "code": {
-                    "type": "string",
-                    "example": "00000"
+                    "description": "Use a standard success code",
+                    "type": "string"
                 },
                 "data": {},
                 "message": {
-                    "type": "string",
-                    "example": "success"
+                    "type": "string"
                 }
             }
         }

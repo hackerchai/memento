@@ -1,4 +1,64 @@
 definitions:
+  api.CreateArticleRequest:
+    properties:
+      category_name:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      url:
+        type: string
+    required:
+    - url
+    type: object
+  entity.ArticleResponse:
+    properties:
+      author:
+        description: Html        *string              `json:"-"` // Explicitly exclude
+          HTML from JSON/Swagger by default
+        type: string
+      category_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_offline:
+        type: boolean
+      llm_description:
+        description: PlainText   *string              `json:"-"` // Explicitly exclude
+          PlainText
+        type: string
+      og_image_url:
+        type: string
+      status:
+        $ref: '#/definitions/entity.ArticleStatus'
+      title:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+      user_id:
+        type: string
+    type: object
+  entity.ArticleStatus:
+    enum:
+    - 0
+    - 1
+    - 2
+    type: integer
+    x-enum-comments:
+      StatusCompleted: Successfully processed
+      StatusFailed: Processing failed
+      StatusPending: Initial state or processing
+    x-enum-varnames:
+    - StatusPending
+    - StatusCompleted
+    - StatusFailed
   entity.CreateUserRequest:
     properties:
       email:
@@ -21,7 +81,6 @@ definitions:
     - email
     - name
     - password
-    - role
     type: object
   entity.LoginRequest:
     properties:
@@ -134,16 +193,71 @@ definitions:
   response.SuccessResponse:
     properties:
       code:
-        example: "00000"
+        description: Use a standard success code
         type: string
       data: {}
       message:
-        example: success
         type: string
     type: object
 info:
   contact: {}
 paths:
+  /articles:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a URL, optionally a category name and tags. Creates a placeholder
+        article immediately and processes the full content in the background.
+      parameters:
+      - description: Article URL and optional metadata
+        in: body
+        name: article
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Article accepted for processing, returns initial article data
+            (with ID and processing status)
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleResponse'
+              type: object
+        "400":
+          description: 'Validation error (URL format, etc. - code: 00004) or invalid
+            JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: 'Conflict - Article with this URL already exists (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (failed to create placeholder, etc.
+            - code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Submit a URL to save as an article
+      tags:
+      - articles
   /auth/login:
     post:
       consumes:
@@ -236,6 +350,31 @@ paths:
       summary: Register a new user
       tags:
       - auth
+  /sse:
+    get:
+      description: Establishes an SSE connection to receive real-time updates (e.g.,
+        article processing status).
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE stream established
+          schema:
+            type: string
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (failed to establish stream - code:
+            00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Establish Server-Sent Event connection
+      tags:
+      - sse
   /users/email:
     put:
       consumes:
