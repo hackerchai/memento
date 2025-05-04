@@ -18,15 +18,17 @@ import (
 // UserService provides user-related business logic.
 type UserService struct {
 	userRepo      *repository.UserRepository
+	appConfigRepo *repository.AppConfigRepository
 	jwtMaker      *auth.JWTMaker
 	tokenDuration time.Duration
 	logger        *xlog.Logger
 }
 
 // NewUserService creates a new UserService.
-func NewUserService(userRepo *repository.UserRepository, jwtMaker *auth.JWTMaker, tokenDuration time.Duration, logger *xlog.Logger) *UserService {
+func NewUserService(userRepo *repository.UserRepository, appConfigRepo *repository.AppConfigRepository, jwtMaker *auth.JWTMaker, tokenDuration time.Duration, logger *xlog.Logger) *UserService {
 	return &UserService{
 		userRepo:      userRepo,
+		appConfigRepo: appConfigRepo,
 		jwtMaker:      jwtMaker,
 		tokenDuration: tokenDuration,
 		logger:        logger.With().Str("service", "UserService").Logger(),
@@ -60,6 +62,23 @@ func (s *UserService) Register(ctx context.Context, req *entity.RegisterRequest)
 		}
 		s.logger.ErrorX(ctx).Err(err).Str("email", req.Email).Msg("Failed to create user in database")
 		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Create default AppConfig for the new user
+	defaultConfig := &entity.AppConfig{
+		UserID:             user.ID,
+		ScrapeImgOffline:   true,
+		LLMAutoGenTags:     false,
+		ExtractLinks:       false,
+		LLMAutoGenAbstract: false,
+		BypassRefer:        false,
+		// Other fields are nil/zero by default
+	}
+	if configErr := s.appConfigRepo.Create(ctx, defaultConfig); configErr != nil {
+		// Log the error, but don't fail the registration since user creation was successful
+		// The user might need to manually configure or a background job could retry later.
+		s.logger.ErrorX(ctx).Err(configErr).Stringer("userID", user.ID).Msg("Failed to create default app config for new user")
+		// Optionally, you could implement a retry mechanism or alert system here.
 	}
 
 	s.logger.InfoX(ctx).Str("userID", user.ID.String()).Str("email", user.Email).Msg("User registered successfully")
