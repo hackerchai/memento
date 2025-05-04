@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/gosimple/slug"
 	"github.com/uptrace/bun"
 
 	"github.com/hackerchai/memento/internal/entity"
@@ -29,10 +30,23 @@ func NewCategoryRepository(db *bun.DB, logger *xlog.Logger) *CategoryRepository 
 
 // Create inserts a new category for a specific user.
 // Checks if a category with the same name already exists for the user.
+// Slug is generated here if not provided.
 func (r *CategoryRepository) Create(ctx context.Context, category *entity.Category) error {
 	// Ensure UserID is set
 	if category.UserID == uuid.Nil {
 		return errors.New("user ID is required to create a category")
+	}
+
+	// Generate slug if it's empty
+	if category.Slug == "" && category.Name != "" {
+		category.Slug = slug.Make(category.Name)
+		// Optional: Add a check here to ensure generated slug is not empty
+		if category.Slug == "" {
+			return errors.New("generated slug is empty, possibly due to invalid name")
+		}
+	} else if category.Slug == "" {
+		// If slug is empty and name is also empty, it's an error
+		return errors.New("cannot create category with empty name and empty slug")
 	}
 
 	// Check if name already exists for this user
@@ -41,7 +55,7 @@ func (r *CategoryRepository) Create(ctx context.Context, category *entity.Catego
 		Where("user_id = ? AND name = ?", category.UserID, category.Name).
 		Exists(ctx)
 	if err != nil {
-		r.logger.ErrorX(ctx).Err(err).Str("name", category.Name).Stringer("userID", category.UserID).Msg("Failed check category existence")
+		r.logger.ErrorX(ctx).Err(err).Str("name", category.Name).Stringer("userID", category.UserID).Msg("Failed check category name existence")
 		return err
 	}
 	if exists {
@@ -49,8 +63,22 @@ func (r *CategoryRepository) Create(ctx context.Context, category *entity.Catego
 		return errors.New("category with this name already exists for the user")
 	}
 
+	// Check slug uniqueness explicitly before insert
+	exists, err = r.db.NewSelect().
+		Model((*entity.Category)(nil)).
+		Where("user_id = ? AND slug = ?", category.UserID, category.Slug).
+		Exists(ctx)
+	if err != nil {
+		r.logger.ErrorX(ctx).Err(err).Str("slug", category.Slug).Stringer("userID", category.UserID).Msg("Failed check category slug existence")
+		return err
+	}
+	if exists {
+		return errors.New("category with this slug already exists for the user")
+	}
+
 	_, err = r.db.NewInsert().Model(category).Exec(ctx)
 	if err != nil {
+		// DB level unique constraint might still catch race conditions
 		r.logger.ErrorX(ctx).Err(err).Str("name", category.Name).Stringer("userID", category.UserID).Msg("Failed to insert new category")
 		return err
 	}
@@ -75,6 +103,23 @@ func (r *CategoryRepository) FindByID(ctx context.Context, id uuid.UUID, userID 
 	return category, nil
 }
 
+// FindBySlug retrieves a category by its slug for a specific user.
+func (r *CategoryRepository) FindBySlug(ctx context.Context, slug string, userID uuid.UUID) (*entity.Category, error) {
+	category := new(entity.Category)
+	err := r.db.NewSelect().
+		Model(category).
+		Where("slug = ? AND user_id = ?", slug, userID).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		r.logger.ErrorX(ctx).Err(err).Str("slug", slug).Stringer("userID", userID).Msg("Failed to find category by slug")
+		return nil, err
+	}
+	return category, nil
+}
+
 // FindByName retrieves a category by its name for a specific user.
 func (r *CategoryRepository) FindByName(ctx context.Context, name string, userID uuid.UUID) (*entity.Category, error) {
 	category := new(entity.Category)
@@ -93,7 +138,7 @@ func (r *CategoryRepository) FindByName(ctx context.Context, name string, userID
 }
 
 // FindOrCreateByName finds a category by name for a user, or creates it if it doesn't exist.
-// This is particularly useful for the "default" category logic.
+// Slug is generated here if creating.
 func (r *CategoryRepository) FindOrCreateByName(ctx context.Context, name string, userID uuid.UUID) (*entity.Category, error) {
 	category, err := r.FindByName(ctx, name, userID)
 	if err == nil {
@@ -109,16 +154,38 @@ func (r *CategoryRepository) FindOrCreateByName(ctx context.Context, name string
 	newCategory := &entity.Category{
 		UserID: userID,
 		Name:   name,
-		// ID, CreatedAt, UpdatedAt will be set by BeforeAppendModel hook or DB defaults
+		// Generate slug before attempting insert
+		Slug: slug.Make(name),
 	}
-	// Use Scan to get the newly created category back, including the generated ID
+
+	// Handle case where generated slug is empty
+	if newCategory.Slug == "" {
+		return nil, errors.New("generated slug is empty for category name: " + name)
+	}
+
+	// Explicitly check slug uniqueness before insert to handle race conditions better
+	exists, err := r.db.NewSelect().
+		Model((*entity.Category)(nil)).
+		Where("user_id = ? AND slug = ?", newCategory.UserID, newCategory.Slug).
+		Exists(ctx)
+	if err != nil {
+		r.logger.ErrorX(ctx).Err(err).Str("slug", newCategory.Slug).Stringer("userID", newCategory.UserID).Msg("Failed check category slug existence in FindOrCreate")
+		return nil, err
+	}
+	if exists {
+		// If slug exists but name didn't, something is inconsistent, maybe log warning?
+		// Or maybe another request generated the slug just now. Retry FindBySlug.
+		r.logger.WarnX(ctx).Str("name", name).Str("slug", newCategory.Slug).Stringer("userID", userID).Msg("Slug collision during FindOrCreateByName, attempting to find by slug")
+		return r.FindBySlug(ctx, newCategory.Slug, userID)
+	}
+
+	// Use Returning("*") to get the full object back, including ID and timestamps
 	err = r.db.NewInsert().Model(newCategory).Returning("*").Scan(ctx)
 	if err != nil {
-		// Handle potential race condition if another request created it between Find and Insert
-		// Check for unique constraint violation errors (specific error strings might vary by DB driver)
+		// Check for unique constraint violation errors again (DB level check)
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "duplicate key value violates unique constraint") || strings.Contains(err.Error(), "Duplicate entry") {
-			r.logger.WarnX(ctx).Str("name", name).Stringer("userID", userID).Msg("Race condition during FindOrCreateByName, category likely created concurrently")
-			// Retry finding it once more
+			r.logger.WarnX(ctx).Str("name", name).Str("slug", newCategory.Slug).Stringer("userID", userID).Msg("DB level unique constraint hit during FindOrCreateByName, category likely created concurrently")
+			// Retry finding by name or slug
 			return r.FindByName(ctx, name, userID)
 		}
 		r.logger.ErrorX(ctx).Err(err).Str("name", newCategory.Name).Stringer("userID", newCategory.UserID).Msg("Failed to insert new category during FindOrCreate")
@@ -148,12 +215,13 @@ func (r *CategoryRepository) FindByUserID(ctx context.Context, userID uuid.UUID)
 }
 
 // Update updates an existing category's name for a specific user.
+// Slug is considered immutable and is not updated.
 func (r *CategoryRepository) Update(ctx context.Context, category *entity.Category) error {
 	if category.UserID == uuid.Nil || category.ID == uuid.Nil {
 		return errors.New("category ID and user ID are required for update")
 	}
 
-	// Optional: Check if the new name already exists for this user (excluding the current category ID)
+	// Check if the new name already exists for this user (excluding the current category ID)
 	exists, err := r.db.NewSelect().
 		Model((*entity.Category)(nil)).
 		Where("user_id = ? AND name = ? AND id != ?", category.UserID, category.Name, category.ID).
@@ -166,11 +234,11 @@ func (r *CategoryRepository) Update(ctx context.Context, category *entity.Catego
 		return errors.New("another category with this name already exists for the user")
 	}
 
-	// Only update specific fields (e.g., name and updated_at)
-	// Bun automatically updates UpdatedAt if the hook/default is set correctly
+	// Explicitly update only the Name field.
+	// UpdatedAt is handled by the DB trigger/default or Bun hook.
 	res, err := r.db.NewUpdate().
-		Model(category).
-		// Set("name = ?", category.Name). // Set only specific fields if needed
+		Model((*entity.Category)(nil)). // Use nil model to avoid updating all fields
+		Set("name = ?", category.Name).
 		Where("id = ? AND user_id = ?", category.ID, category.UserID). // Ensure ownership
 		Exec(ctx)
 
@@ -198,7 +266,7 @@ func (r *CategoryRepository) Delete(ctx context.Context, id uuid.UUID, userID uu
 		Exec(ctx)
 
 	if err != nil {
-		r.logger.ErrorX(ctx).Err(err).Stringer("id", id).Stringer("userID", userID).Msg("Failed to delete category")
+		r.logger.ErrorX(ctx).Err(err).Stringer("id", id).Stringer("userID", userID).Msg("Failed to delete category by ID")
 		return err
 	}
 
@@ -209,6 +277,28 @@ func (r *CategoryRepository) Delete(ctx context.Context, id uuid.UUID, userID uu
 		return sql.ErrNoRows
 	}
 
-	r.logger.InfoX(ctx).Stringer("id", id).Stringer("userID", userID).Msg("Category deleted successfully")
+	r.logger.InfoX(ctx).Stringer("id", id).Stringer("userID", userID).Msg("Category deleted successfully by ID")
+	return nil
+}
+
+// DeleteBySlug removes a category by its slug, ensuring it belongs to the specified user.
+func (r *CategoryRepository) DeleteBySlug(ctx context.Context, slug string, userID uuid.UUID) error {
+	res, err := r.db.NewDelete().
+		Model((*entity.Category)(nil)).
+		Where("slug = ? AND user_id = ?", slug, userID). // Ensure ownership
+		Exec(ctx)
+
+	if err != nil {
+		r.logger.ErrorX(ctx).Err(err).Str("slug", slug).Stringer("userID", userID).Msg("Failed to delete category by slug")
+		return err
+	}
+
+	// Check if any row was actually affected
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	r.logger.InfoX(ctx).Str("slug", slug).Stringer("userID", userID).Msg("Category deleted successfully by slug")
 	return nil
 }
