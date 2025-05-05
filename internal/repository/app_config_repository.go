@@ -72,7 +72,8 @@ func (r *AppConfigRepository) GetByUserID(ctx context.Context, userID uuid.UUID)
 		if errors.Is(err, sql.ErrNoRows) {
 			// No config found, return a default config struct
 			r.logger.InfoX(ctx).Stringer("userID", userID).Msg("No app config found for user, returning defaults.")
-			return &entity.AppConfig{UserID: userID}, nil // Return default struct with UserID set
+			// Return default struct with UserID and default Locale set
+			return &entity.AppConfig{UserID: userID, Locale: "en-US"}, nil
 		}
 		// Handle other potential errors
 		r.logger.ErrorX(ctx).Err(err).Stringer("userID", userID).Msg("Failed to get app config by user ID")
@@ -112,6 +113,7 @@ func (r *AppConfigRepository) CreateOrUpdate(ctx context.Context, config *entity
 		Set("custom_scrape_retry_times = EXCLUDED.custom_scrape_retry_times").
 		Set("custom_user_proxy = EXCLUDED.custom_user_proxy").
 		Set("bypass_refer = EXCLUDED.bypass_refer").
+		Set("locale = EXCLUDED.locale"). // Add locale to the update set
 		// UpdatedAt is typically handled by the database trigger/default
 		// Set("updated_at = NOW()"). // Explicitly set if needed or DB doesn't handle it
 		Exec(ctx)
@@ -135,7 +137,7 @@ func (r *AppConfigRepository) Update(ctx context.Context, config *entity.AppConf
 	res, err := r.db.NewUpdate().
 		Model(config).
 		// Exclude fields that shouldn't be updatable or are handled by DB
-		Column("scrape_img_offline", "llm_auto_gen_tags", "extract_links", "llm_profile_id", "llm_provider", "llm_auto_gen_abstract", "custom_user_agent", "custom_scrape_timeout_seconds", "custom_scrape_retry_times", "custom_user_proxy", "bypass_refer"). // Explicitly list columns to update
+		Column("scrape_img_offline", "llm_auto_gen_tags", "extract_links", "llm_profile_id", "llm_provider", "llm_auto_gen_abstract", "custom_user_agent", "custom_scrape_timeout_seconds", "custom_scrape_retry_times", "custom_user_proxy", "bypass_refer", "locale"). // Add locale to explicitly updated columns
 		Where("user_id = ?", config.UserID).
 		Exec(ctx)
 
@@ -152,4 +154,22 @@ func (r *AppConfigRepository) Update(ctx context.Context, config *entity.AppConf
 
 	r.logger.InfoX(ctx).Stringer("userID", config.UserID).Msg("App config updated successfully")
 	return nil
+}
+
+// FindAll retrieves a paginated list of all app configurations.
+func (r *AppConfigRepository) FindAll(ctx context.Context, limit, offset int) ([]*entity.AppConfig, int64, error) {
+	var configs []*entity.AppConfig
+	count, err := r.db.NewSelect().
+		Model(&configs).
+		Limit(limit).
+		Offset(offset).
+		Order("created_at DESC"). // Optional: order by creation time
+		ScanAndCount(ctx)
+
+	if err != nil {
+		r.logger.ErrorX(ctx).Err(err).Msg("Failed to retrieve all app configs")
+		return nil, 0, err
+	}
+
+	return configs, int64(count), nil
 }
