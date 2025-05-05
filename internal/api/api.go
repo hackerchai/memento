@@ -24,5 +24,9 @@ var Module = fx.Module("api",
 			NewSSEHandler,
 			fx.ParamTags(``, ``),
 		),
+		fx.Annotate(
+			NewAppConfigHandler,
+			fx.ParamTags(``, ``),
+		),
 	),
 )

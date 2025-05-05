@@ -22,6 +22,6 @@ var Module = fx.Options(
 			return NewUserService(userRepo, appConfigRepo, jwtMaker, tokenDuration, logger)
 		},
 		NewArticleService, // This now implicitly requires AppConfigRepository
-		// fx.Provide(NewAppConfigService), // Commented out until implemented
+		NewAppConfigService,
 	),
 )

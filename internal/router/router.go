@@ -24,13 +24,14 @@ var Module = fx.Module("router",
 type RegisterRoutesParams struct {
 	fx.In
 
-	App            *fiber.App
-	Config         *config.Config
-	Logger         *xlog.Logger
-	AuthHandler    *api.AuthHandler
-	UserHandler    *api.UserHandler
-	ArticleHandler *api.ArticleHandler
-	SSEHandler     *api.SSEHandler
+	App              *fiber.App
+	Config           *config.Config
+	Logger           *xlog.Logger
+	AuthHandler      *api.AuthHandler
+	UserHandler      *api.UserHandler
+	ArticleHandler   *api.ArticleHandler
+	SSEHandler       *api.SSEHandler
+	AppConfigHandler *api.AppConfigHandler
 }
 
 // RegisterRoutes registers all application routes.
@@ -77,6 +78,12 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	rootGroup.Post("/", p.UserHandler.CreateUser)
 	rootGroup.Delete("/:id", p.UserHandler.DeleteUser)
 
+	// Root AppConfig routes (nested under root user routes for clarity)
+	rootConfigGroup := rootGroup.Group("/config")
+	rootConfigGroup.Get("/", p.AppConfigHandler.ListConfigsRoot)
+	rootConfigGroup.Get("/:id", p.AppConfigHandler.GetConfigByUserIDRoot)    // :id is target user ID
+	rootConfigGroup.Put("/:id", p.AppConfigHandler.UpdateConfigByUserIDRoot) // :id is target user ID
+
 	// Article routes
 	articleGroup := protected.Group("/articles")
 	articleGroup.Post("", p.ArticleHandler.CreateArticle)
@@ -85,4 +92,9 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	// SSE route
 	sseGroup := protected.Group("/sse")
 	sseGroup.Get("", p.SSEHandler.ConnectSSE)
+
+	// App Config routes (for authenticated user)
+	appConfigGroup := protected.Group("/config")
+	appConfigGroup.Get("/", p.AppConfigHandler.GetOwnConfig)
+	appConfigGroup.Put("/", p.AppConfigHandler.UpdateOwnConfig)
 }
