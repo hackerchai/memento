@@ -15,6 +15,12 @@ import (
 	"github.com/hackerchai/memento/pkg/xlog"
 )
 
+// Define specific errors for login failures
+var (
+	ErrUserNotFoundLogin = errors.New("login failed: user not found")
+	ErrInvalidPassword   = errors.New("login failed: invalid password")
+)
+
 // UserService provides user-related business logic.
 type UserService struct {
 	userRepo      *repository.UserRepository
@@ -94,7 +100,7 @@ func (s *UserService) Login(ctx context.Context, req *entity.LoginRequest) (*ent
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			s.logger.WarnX(ctx).Str("email", req.Email).Msg("Login attempt failed: user not found")
-			return nil, errors.New("invalid email or password") // Generic error for security
+			return nil, ErrUserNotFoundLogin
 		}
 		s.logger.ErrorX(ctx).Err(err).Str("email", req.Email).Msg("Failed to find user by email during login")
 		return nil, fmt.Errorf("failed to find user: %w", err)
@@ -109,7 +115,7 @@ func (s *UserService) Login(ctx context.Context, req *entity.LoginRequest) (*ent
 	}
 	if !match {
 		s.logger.WarnX(ctx).Str("email", req.Email).Msg("Login attempt failed: invalid password")
-		return nil, errors.New("invalid email or password")
+		return nil, ErrInvalidPassword
 	}
 
 	// Generate JWT token

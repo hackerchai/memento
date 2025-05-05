@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 
@@ -83,6 +85,15 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 	resp, err := h.userService.Login(c.Context(), &req)
 	if err != nil {
+		// Check for specific login errors defined in errmsg
+		if errors.Is(err, service.ErrUserNotFoundLogin) {
+			// Even though we have a specific code, keep the external message generic
+			return response.HandleError(c, h.logger, errmsg.ErrInvalidCreds) // Return 401 Invalid email or password
+		} else if errors.Is(err, service.ErrInvalidPassword) {
+			// Same generic message for invalid password
+			return response.HandleError(c, h.logger, errmsg.ErrInvalidCreds) // Return 401 Invalid email or password
+		}
+		// For any other errors (e.g., database connection issues, token generation failed), handle them generically
 		return response.HandleError(c, h.logger, err)
 	}
 
