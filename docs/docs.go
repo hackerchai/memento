@@ -263,6 +263,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves the application configuration settings for the currently authenticated user.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Get own app configuration",
+                "responses": {
+                    "200": {
+                        "description": "Successfully retrieved app configuration",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.AppConfigResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (code: 00001 or 00006)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the application configuration settings for the currently authenticated user. Only provided fields are updated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Update own app configuration",
+                "parameters": [
+                    {
+                        "description": "Configuration fields to update",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entity.UpdateAppConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated app configuration",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.AppConfigResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (code: 00004) or invalid JSON (code: 00003)",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (code: 00001 or 00006)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sse": {
             "get": {
                 "security": [
@@ -783,6 +914,298 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/root/config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves a paginated list of all user application configurations. Requires root privileges.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config",
+                    "root"
+                ],
+                "summary": "List all app configurations (Root only)",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Items per page",
+                        "name": "per_page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully retrieved configuration list",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/response.PaginationResponse"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "data": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/definitions/entity.AppConfigResponse"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid pagination parameters (code: 00004)",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (not root user - code: 01011)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (code: 00001 or 00006)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/root/config/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieves the application configuration settings for a specific user by their ID. Requires root privileges.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config",
+                    "root"
+                ],
+                "summary": "Get user's app configuration (Root only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Target User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully retrieved user's app configuration",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.AppConfigResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid user ID format (code: 00004)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (not root user - code: 01011)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Configuration not found for user (code: 02001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (code: 00001 or 00006)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates the application configuration settings for a specific user by their ID. Requires root privileges. Only provided fields are updated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config",
+                    "root"
+                ],
+                "summary": "Update user's app configuration (Root only)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Target User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Configuration fields to update",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/entity.UpdateAppConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated user's app configuration",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entity.AppConfigResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error (code: 00004), invalid JSON (code: 00003), or invalid user ID format",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (invalid/missing token - code: 01001)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden (not root user - code: 01011)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Configuration or user not found (code: 02001)\" // Update might create if not found, but GET check happens first implicitly",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error (code: 00001 or 00006)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/users/root/{id}": {
             "delete": {
                 "security": [
@@ -874,6 +1297,59 @@ const docTemplate = `{
                 }
             }
         },
+        "entity.AppConfigResponse": {
+            "type": "object",
+            "properties": {
+                "bypass_refer": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "custom_scrape_retry_times": {
+                    "type": "integer"
+                },
+                "custom_scrape_timeout_seconds": {
+                    "type": "integer"
+                },
+                "custom_user_agent": {
+                    "type": "string"
+                },
+                "custom_user_proxy": {
+                    "type": "string"
+                },
+                "extract_links": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "llm_auto_gen_abstract": {
+                    "type": "boolean"
+                },
+                "llm_auto_gen_tags": {
+                    "type": "boolean"
+                },
+                "llm_profile_id": {
+                    "type": "string"
+                },
+                "llm_provider": {
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "scrape_img_offline": {
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "entity.ArticleResponse": {
             "type": "object",
             "properties": {
@@ -925,17 +1401,23 @@ const docTemplate = `{
             "enum": [
                 0,
                 1,
-                2
+                -1,
+                2,
+                3
             ],
             "x-enum-comments": {
+                "StatusAutoTagged": "Successfully auto-tagged by LLM",
                 "StatusCompleted": "Successfully processed",
                 "StatusFailed": "Processing failed",
+                "StatusLLMSummarized": "Successfully summarized by LLM",
                 "StatusPending": "Initial state or processing"
             },
             "x-enum-varnames": [
                 "StatusPending",
                 "StatusCompleted",
-                "StatusFailed"
+                "StatusFailed",
+                "StatusLLMSummarized",
+                "StatusAutoTagged"
             ]
         },
         "entity.CreateUserRequest": {
@@ -1015,6 +1497,50 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 72,
                     "minLength": 7
+                }
+            }
+        },
+        "entity.UpdateAppConfigRequest": {
+            "type": "object",
+            "properties": {
+                "bypass_refer": {
+                    "type": "boolean"
+                },
+                "custom_scrape_retry_times": {
+                    "type": "integer"
+                },
+                "custom_scrape_timeout_seconds": {
+                    "type": "integer"
+                },
+                "custom_user_agent": {
+                    "type": "string"
+                },
+                "custom_user_proxy": {
+                    "type": "string"
+                },
+                "extract_links": {
+                    "type": "boolean"
+                },
+                "llm_auto_gen_abstract": {
+                    "type": "boolean"
+                },
+                "llm_auto_gen_tags": {
+                    "type": "boolean"
+                },
+                "llm_profile_id": {
+                    "description": "Use pointer for optional UUID",
+                    "type": "string"
+                },
+                "llm_provider": {
+                    "type": "string"
+                },
+                "locale": {
+                    "description": "Added locale",
+                    "type": "string",
+                    "maxLength": 10
+                },
+                "scrape_img_offline": {
+                    "type": "boolean"
                 }
             }
         },

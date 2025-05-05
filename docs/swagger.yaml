@@ -12,6 +12,41 @@ definitions:
     required:
     - url
     type: object
+  entity.AppConfigResponse:
+    properties:
+      bypass_refer:
+        type: boolean
+      created_at:
+        type: string
+      custom_scrape_retry_times:
+        type: integer
+      custom_scrape_timeout_seconds:
+        type: integer
+      custom_user_agent:
+        type: string
+      custom_user_proxy:
+        type: string
+      extract_links:
+        type: boolean
+      id:
+        type: string
+      llm_auto_gen_abstract:
+        type: boolean
+      llm_auto_gen_tags:
+        type: boolean
+      llm_profile_id:
+        type: string
+      llm_provider:
+        type: string
+      locale:
+        type: string
+      scrape_img_offline:
+        type: boolean
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   entity.ArticleResponse:
     properties:
       author:
@@ -49,16 +84,22 @@ definitions:
     enum:
     - 0
     - 1
+    - -1
     - 2
+    - 3
     type: integer
     x-enum-comments:
+      StatusAutoTagged: Successfully auto-tagged by LLM
       StatusCompleted: Successfully processed
       StatusFailed: Processing failed
+      StatusLLMSummarized: Successfully summarized by LLM
       StatusPending: Initial state or processing
     x-enum-varnames:
     - StatusPending
     - StatusCompleted
     - StatusFailed
+    - StatusLLMSummarized
+    - StatusAutoTagged
   entity.CreateUserRequest:
     properties:
       email:
@@ -115,6 +156,36 @@ definitions:
     - email
     - name
     - password
+    type: object
+  entity.UpdateAppConfigRequest:
+    properties:
+      bypass_refer:
+        type: boolean
+      custom_scrape_retry_times:
+        type: integer
+      custom_scrape_timeout_seconds:
+        type: integer
+      custom_user_agent:
+        type: string
+      custom_user_proxy:
+        type: string
+      extract_links:
+        type: boolean
+      llm_auto_gen_abstract:
+        type: boolean
+      llm_auto_gen_tags:
+        type: boolean
+      llm_profile_id:
+        description: Use pointer for optional UUID
+        type: string
+      llm_provider:
+        type: string
+      locale:
+        description: Added locale
+        maxLength: 10
+        type: string
+      scrape_img_offline:
+        type: boolean
     type: object
   entity.UpdateEmailRequest:
     properties:
@@ -350,6 +421,83 @@ paths:
       summary: Register a new user
       tags:
       - auth
+  /config:
+    get:
+      description: Retrieves the application configuration settings for the currently
+        authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved app configuration
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.AppConfigResponse'
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get own app configuration
+      tags:
+      - config
+    put:
+      consumes:
+      - application/json
+      description: Updates the application configuration settings for the currently
+        authenticated user. Only provided fields are updated.
+      parameters:
+      - description: Configuration fields to update
+        in: body
+        name: config
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdateAppConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated app configuration
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.AppConfigResponse'
+              type: object
+        "400":
+          description: 'Validation error (code: 00004) or invalid JSON (code: 00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update own app configuration
+      tags:
+      - config
   /sse:
     get:
       description: Establishes an SSE connection to receive real-time updates (e.g.,
@@ -711,5 +859,185 @@ paths:
       summary: Delete a user (Root only)
       tags:
       - users
+      - root
+  /users/root/config:
+    get:
+      description: Retrieves a paginated list of all user application configurations.
+        Requires root privileges.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved configuration list
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.AppConfigResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters (code: 00004)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all app configurations (Root only)
+      tags:
+      - config
+      - root
+  /users/root/config/{id}:
+    get:
+      description: Retrieves the application configuration settings for a specific
+        user by their ID. Requires root privileges.
+      parameters:
+      - description: Target User ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved user's app configuration
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.AppConfigResponse'
+              type: object
+        "400":
+          description: 'Invalid user ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Configuration not found for user (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get user's app configuration (Root only)
+      tags:
+      - config
+      - root
+    put:
+      consumes:
+      - application/json
+      description: Updates the application configuration settings for a specific user
+        by their ID. Requires root privileges. Only provided fields are updated.
+      parameters:
+      - description: Target User ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Configuration fields to update
+        in: body
+        name: config
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdateAppConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated user's app configuration
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.AppConfigResponse'
+              type: object
+        "400":
+          description: 'Validation error (code: 00004), invalid JSON (code: 00003),
+            or invalid user ID format'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Configuration or user not found (code: 02001)" // Update might
+            create if not found, but GET check happens first implicitly'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update user's app configuration (Root only)
+      tags:
+      - config
       - root
 swagger: "2.0"
