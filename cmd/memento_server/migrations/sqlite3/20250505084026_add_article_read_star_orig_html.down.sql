@@ -1,0 +1,7 @@
+-- +migrate Down
+-- WARNING: SQLite does not reliably support DROP COLUMN.
+-- Reversing this migration might require manual table recreation.
+-- The following statements might fail or have no effect.
+-- ALTER TABLE articles DROP COLUMN is_read;
+-- ALTER TABLE articles DROP COLUMN is_starred;
+-- ALTER TABLE articles DROP COLUMN original_html;
