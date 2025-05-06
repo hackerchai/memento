@@ -1,16 +1,14 @@
 definitions:
-  api.CreateArticleRequest:
+  entity.AddTagsRequest:
     properties:
-      category_name:
-        type: string
       tags:
+        description: Requires at least one tag, each tag name is required
         items:
           type: string
+        minItems: 1
         type: array
-      url:
-        type: string
     required:
-    - url
+    - tags
     type: object
   entity.AppConfigResponse:
     properties:
@@ -47,6 +45,54 @@ definitions:
       user_id:
         type: string
     type: object
+  entity.ArticleDetailResponse:
+    properties:
+      author:
+        type: string
+      category:
+        allOf:
+        - $ref: '#/definitions/entity.CategoryResponse'
+        description: 'TODO: Consider adding full Category/Tags details if needed'
+      category_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      html:
+        description: Include HTML
+        type: string
+      id:
+        type: string
+      is_offline:
+        type: boolean
+      is_read:
+        type: boolean
+      is_starred:
+        type: boolean
+      llm_description:
+        type: string
+      og_image_url:
+        type: string
+      plain_text:
+        description: Include PlainText
+        type: string
+      status:
+        $ref: '#/definitions/entity.ArticleStatus'
+      tags:
+        description: Use TagResponse DTO
+        items:
+          $ref: '#/definitions/entity.TagResponse'
+        type: array
+      title:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+      user_id:
+        type: string
+    type: object
   entity.ArticleResponse:
     properties:
       author:
@@ -62,6 +108,12 @@ definitions:
       id:
         type: string
       is_offline:
+        type: boolean
+      is_read:
+        description: New field
+        type: boolean
+      is_starred:
+        description: New field
         type: boolean
       llm_description:
         description: PlainText   *string              `json:"-"` // Explicitly exclude
@@ -100,6 +152,26 @@ definitions:
     - StatusFailed
     - StatusLLMSummarized
     - StatusAutoTagged
+  entity.CategoryResponse:
+    properties:
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
+  entity.CreateArticleRequest:
+    properties:
+      category_name:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      url:
+        type: string
+    required:
+    - url
+    type: object
   entity.CreateUserRequest:
     properties:
       email:
@@ -157,6 +229,24 @@ definitions:
     - name
     - password
     type: object
+  entity.RemoveTagsRequest:
+    properties:
+      tags:
+        description: Requires at least one tag, each tag name is required
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - tags
+    type: object
+  entity.TagResponse:
+    properties:
+      name:
+        type: string
+      slug:
+        type: string
+    type: object
   entity.UpdateAppConfigRequest:
     properties:
       bypass_refer:
@@ -185,6 +275,21 @@ definitions:
         maxLength: 10
         type: string
       scrape_img_offline:
+        type: boolean
+    type: object
+  entity.UpdateArticleCategoryRequest:
+    properties:
+      category:
+        description: Requires the Name of the new category
+        type: string
+    required:
+    - category
+    type: object
+  entity.UpdateArticleStatusRequest:
+    properties:
+      is_read:
+        type: boolean
+      is_starred:
         type: boolean
     type: object
   entity.UpdateEmailRequest:
@@ -274,6 +379,74 @@ info:
   contact: {}
 paths:
   /articles:
+    get:
+      description: Retrieves a paginated list of articles belonging to the authenticated
+        user. Allows filtering by read and starred status.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      - description: Filter by read status (true/false)
+        in: query
+        name: is_read
+        type: boolean
+      - description: Filter by starred status (true/false)
+        in: query
+        name: is_starred
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved articles
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.ArticleResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination or filter parameters (code: 00004)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List user's articles
+      tags:
+      - articles
     post:
       consumes:
       - application/json
@@ -285,7 +458,7 @@ paths:
         name: article
         required: true
         schema:
-          $ref: '#/definitions/api.CreateArticleRequest'
+          $ref: '#/definitions/entity.CreateArticleRequest'
       produces:
       - application/json
       responses:
@@ -327,6 +500,349 @@ paths:
       security:
       - BearerAuth: []
       summary: Submit a URL to save as an article
+      tags:
+      - articles
+  /articles/{id}:
+    delete:
+      description: Deletes a specific article belonging to the authenticated user.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully deleted article
+        "400":
+          description: 'Invalid Article ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an article
+      tags:
+      - articles
+    get:
+      description: Retrieves details of a specific article belonging to the authenticated
+        user, including category and tags.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved article with details
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleDetailResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a specific article
+      tags:
+      - articles
+    patch:
+      consumes:
+      - application/json
+      description: Updates the is_read and/or is_starred flags for a specific article.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update (at least one required)
+        in: body
+        name: status
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdateArticleStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated article status
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format, invalid JSON, or no fields provided
+            (code: 00004/00003)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update article read/starred status
+      tags:
+      - articles
+  /articles/{id}/category:
+    patch:
+      consumes:
+      - application/json
+      description: Updates the category associated with a specific article.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New category name
+        in: body
+        name: category
+        required: true
+        schema:
+          $ref: '#/definitions/entity.UpdateArticleCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated category and returned updated article
+            details
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleDetailResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format, invalid JSON, or validation error
+            (e.g., category not found/invalid) (code: 00004/00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found or target category not found for user (code:
+            02001/00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change an article's category
+      tags:
+      - articles
+  /articles/{id}/rescrape:
+    post:
+      description: Triggers the background process to fetch and parse the article
+        content again for a specific article.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Article accepted for re-processing, returns article data with
+            pending status
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Re-scrape an article
+      tags:
+      - articles
+  /articles/{id}/tags:
+    delete:
+      consumes:
+      - application/json
+      description: Removes one or more tags from a specific article. Ignores tags
+        that are not associated or do not exist.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: List of tag names to remove
+        in: body
+        name: tags
+        required: true
+        schema:
+          $ref: '#/definitions/entity.RemoveTagsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully removed tags (if found) and returned updated article
+            details
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleDetailResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format, invalid JSON, or validation error
+            on tags (code: 00004/00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (failed to remove tags, etc. - code:
+            00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove tags from an article
+      tags:
+      - articles
+    post:
+      consumes:
+      - application/json
+      description: Adds one or more tags to a specific article. If tags don't exist
+        for the user, they are created.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: List of tag names to add
+        in: body
+        name: tags
+        required: true
+        schema:
+          $ref: '#/definitions/entity.AddTagsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully added tags and returned updated article details
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleDetailResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format, invalid JSON, or validation error
+            on tags (code: 00004/00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (failed to add tags, etc. - code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add tags to an article
       tags:
       - articles
   /auth/login:
@@ -859,6 +1375,217 @@ paths:
       summary: Delete a user (Root only)
       tags:
       - users
+      - root
+  /users/root/articles/{id}:
+    delete:
+      description: Deletes a specific article by its ID. Requires root privileges.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully deleted article
+        "400":
+          description: 'Invalid Article ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete any article by ID (Root only)
+      tags:
+      - articles
+      - root
+    get:
+      description: Retrieves details of a specific article by its ID, including category
+        and tags. Requires root privileges.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved article with details
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleDetailResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get any article by ID (Root only)
+      tags:
+      - articles
+      - root
+  /users/root/articles/{id}/rescrape:
+    post:
+      description: Triggers the background process to fetch and parse content again
+        for any article ID. Requires root privileges.
+      parameters:
+      - description: Article ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Article accepted for re-processing, returns article data with
+            pending status
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.ArticleResponse'
+              type: object
+        "400":
+          description: 'Invalid Article ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Article not found (code: 02001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Re-scrape any article (Root only)
+      tags:
+      - articles
+      - root
+  /users/root/articles/user:
+    get:
+      description: Retrieves a paginated list of articles for a given user ID. Requires
+        root privileges.
+      parameters:
+      - description: Target User ID
+        format: uuid
+        in: query
+        name: user_id
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved user's articles
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.ArticleResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid User ID format or pagination parameters (code: 00004)'
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.ErrorResponse'
+            - properties:
+                details:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "401":
+          description: 'Unauthorized (invalid/missing token - code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List articles for a specific user (Root only)
+      tags:
+      - articles
       - root
   /users/root/config:
     get:
