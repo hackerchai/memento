@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gosimple/slug"
@@ -202,22 +204,26 @@ func (r *TagRepository) FindOrCreateByName(ctx context.Context, names []string, 
 	return resultTags, nil
 }
 
-// FindByUserID retrieves all tags for a specific user.
-func (r *TagRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]entity.Tag, error) {
+// FindByUserID retrieves all tags for a specific user with pagination.
+// This new version supports pagination and returns a total count.
+func (r *TagRepository) FindByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]entity.Tag, int, error) {
 	var tags []entity.Tag
-	err := r.db.NewSelect().
+	query := r.db.NewSelect().
 		Model(&tags).
 		Where("user_id = ?", userID).
-		Order("name ASC").
-		Scan(ctx)
+		Order("name ASC"). // Or created_at DESC etc. name ASC is common for tags
+		Limit(limit).
+		Offset(offset)
+
+	count, err := query.ScanAndCount(ctx)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return []entity.Tag{}, nil
+			return []entity.Tag{}, 0, nil // No error, just an empty list
 		}
 		r.logger.ErrorX(ctx).Err(err).Stringer("userID", userID).Msg("Failed to find tags by user ID")
-		return nil, err
+		return nil, 0, err
 	}
-	return tags, nil
+	return tags, count, nil
 }
 
 // Update updates an existing tag's name for a specific user.
@@ -315,4 +321,127 @@ func (r *TagRepository) FindByNames(ctx context.Context, names []string, userID 
 		return nil, err
 	}
 	return tags, nil
+}
+
+// DeleteTagAndAssociations deletes a tag and all its associations from article_tags.
+// This operation is performed in a transaction.
+func (r *TagRepository) DeleteTagAndAssociations(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	err := r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// 1. Delete associations from article_tags
+		// We use the tag's ID. Since tags are user-specific, this implicitly handles user scoping for associations.
+		// The user_id in article_tags is the article owner, not necessarily the tag creator for general system, but here tags are user-scoped.
+		_, err := tx.NewDelete().
+			Model((*entity.ArticleTag)(nil)). // Assuming ArticleTag is the model for article_tags join table
+			Where("tag_id = ?", id).
+			// If article_tags also has a user_id that needs to be checked (e.g. user who made the association)
+			// and it's different from the tag's user_id scope, add: .Where("user_id = ?", userID)
+			// For now, assume deleting a user's tag removes all its links.
+			Exec(ctx)
+		if err != nil {
+			r.logger.ErrorX(ctx).Err(err).Stringer("tagID", id).Msg("Failed to delete article-tag associations")
+			return fmt.Errorf("failed to delete article-tag associations: %w", err)
+		}
+
+		// 2. Delete the tag itself
+		res, err := tx.NewDelete().
+			Model((*entity.Tag)(nil)).
+			Where("id = ? AND user_id = ?", id, userID).
+			Exec(ctx)
+		if err != nil {
+			r.logger.ErrorX(ctx).Err(err).Stringer("id", id).Stringer("userID", userID).Msg("Failed to delete tag")
+			return fmt.Errorf("failed to delete tag: %w", err)
+		}
+
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected == 0 {
+			return sql.ErrNoRows // Tag not found or not owned by user
+		}
+		return nil
+	})
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.WarnX(ctx).Stringer("id", id).Stringer("userID", userID).Msg("Tag not found for deletion")
+			return sql.ErrNoRows
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("id", id).Stringer("userID", userID).Msg("Transaction failed for deleting tag and associations")
+		return err
+	}
+
+	r.logger.InfoX(ctx).Stringer("id", id).Stringer("userID", userID).Msg("Tag and associations deleted successfully")
+	return nil
+}
+
+// FindByIDOrSlug finds a tag by its ID (if identifier is a UUID) or slug for a specific user.
+func (r *TagRepository) FindByIDOrSlug(ctx context.Context, identifier string, userID uuid.UUID) (*entity.Tag, error) {
+	parsedID, err := uuid.Parse(identifier)
+	if err == nil {
+		// Identifier is a valid UUID, try finding by ID
+		return r.FindByID(ctx, parsedID, userID)
+	}
+	// Identifier is not a UUID, try finding by slug
+	return r.FindBySlug(ctx, identifier, userID) // Assuming FindBySlug exists and is correct
+}
+
+// FindByIDRegardlessOfUser retrieves a tag by its ID, without user scoping (Root operation).
+func (r *TagRepository) FindByIDRegardlessOfUser(ctx context.Context, tagID uuid.UUID) (*entity.Tag, error) {
+	tag := new(entity.Tag)
+	err := r.db.NewSelect().
+		Model(tag).
+		Where("id = ?", tagID).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("id", tagID).Msg("[Root] Failed to find tag by ID regardless of user")
+		return nil, err
+	}
+	return tag, nil
+}
+
+// FindBySlugRegardlessOfUser retrieves a tag by its slug, without user scoping (Root operation).
+func (r *TagRepository) FindBySlugRegardlessOfUser(ctx context.Context, slug string) (*entity.Tag, error) {
+	tag := new(entity.Tag)
+	err := r.db.NewSelect().
+		Model(tag).
+		Where("slug = ?", slug).
+		Limit(1). // Take the first one if multiple users have the same slug
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		r.logger.ErrorX(ctx).Err(err).Str("slug", slug).Msg("[Root] Failed to find tag by slug regardless of user")
+		return nil, err
+	}
+	return tag, nil
+}
+
+// SearchByNameOrSlugForUser searches tags by name or slug for a specific user, with pagination.
+// It performs a case-insensitive LIKE search.
+func (r *TagRepository) SearchByNameOrSlugForUser(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]entity.Tag, int, error) {
+	var tags []entity.Tag
+	searchPattern := "%%" + strings.ToLower(query) + "%%" // Prepare for case-insensitive LIKE
+
+	selectQuery := r.db.NewSelect().
+		Model(&tags).
+		Where("user_id = ?", userID).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.Where("LOWER(name) LIKE ?", searchPattern). // Case-insensitive search for name
+										WhereOr("LOWER(slug) LIKE ?", searchPattern) // Case-insensitive search for slug
+		}).
+		OrderExpr("CASE WHEN LOWER(name) = LOWER(?) THEN 0 WHEN LOWER(slug) = LOWER(?) THEN 1 WHEN LOWER(name) LIKE LOWER(?) THEN 2 WHEN LOWER(slug) LIKE LOWER(?) THEN 3 ELSE 4 END, name ASC", query, query, query+"%%", query+"%%"). // Prioritize exact matches, then prefix matches
+		Limit(limit).
+		Offset(offset)
+
+	count, err := selectQuery.ScanAndCount(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Tag{}, 0, nil
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("userID", userID).Str("query", query).Msg("Failed to search tags by name or slug for user")
+		return nil, 0, err
+	}
+	return tags, count, nil
 }

@@ -541,3 +541,55 @@ func (r *ArticleRepository) UpdateCategoryID(ctx context.Context, articleID, use
 	}
 	return nil
 }
+
+// FindArticlesByCategoryID retrieves articles belonging to a specific category for a user, with pagination.
+// Articles are ordered by created_at DESC.
+func (r *ArticleRepository) FindArticlesByCategoryID(ctx context.Context, categoryID uuid.UUID, userID uuid.UUID, limit, offset int) ([]entity.Article, int, error) {
+	var articles []entity.Article
+	query := r.db.NewSelect().
+		Model(&articles).
+		Where("a.category_id = ?", categoryID).
+		Where("a.user_id = ?", userID).
+		Order("a.created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Relation("Category"). // Load category relation
+		Relation("Tags")      // Load tags relation
+
+	count, err := query.ScanAndCount(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Article{}, 0, nil
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("categoryID", categoryID).Stringer("userID", userID).Msg("Failed to find articles by category ID")
+		return nil, 0, err
+	}
+	return articles, count, nil
+}
+
+// FindArticlesByTagID retrieves articles associated with a specific tag for a user, with pagination.
+// Articles are ordered by created_at DESC.
+func (r *ArticleRepository) FindArticlesByTagID(ctx context.Context, tagID uuid.UUID, userID uuid.UUID, limit, offset int) ([]entity.Article, int, error) {
+	var articles []entity.Article
+
+	query := r.db.NewSelect().
+		Model(&articles).
+		Join("JOIN article_tags AS at ON at.article_id = a.id").
+		Where("at.tag_id = ?", tagID).
+		Where("a.user_id = ?", userID).
+		Order("a.created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Relation("Category"). // Load category relation
+		Relation("Tags")      // Load tags relation
+
+	count, err := query.ScanAndCount(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Article{}, 0, nil
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("tagID", tagID).Stringer("userID", userID).Msg("Failed to find articles by tag ID")
+		return nil, 0, err
+	}
+	return articles, count, nil
+}
