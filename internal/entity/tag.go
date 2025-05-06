@@ -41,3 +41,40 @@ func (t *Tag) ToResponseDTO() *TagResponse {
 		Slug: t.Slug,
 	}
 }
+
+// TagDetailResponse defines the data structure for detailed tag API responses.
+type TagDetailResponse struct {
+	ID        uuid.UUID `json:"id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Name      string    `json:"name"`
+	Slug      string    `json:"slug"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ToDetailResponseDTO converts a Tag entity to its TagDetailResponse DTO.
+func (t *Tag) ToDetailResponseDTO() *TagDetailResponse {
+	if t == nil {
+		return nil
+	}
+	return &TagDetailResponse{
+		ID:        t.ID,
+		UserID:    t.UserID,
+		Name:      t.Name,
+		Slug:      t.Slug,
+		CreatedAt: t.CreatedAt,
+		UpdatedAt: t.UpdatedAt,
+	}
+}
+
+// CreateTagRequest defines the input for creating a new tag.
+type CreateTagRequest struct {
+	Name string `json:"name" validate:"required,min=1,max=100"`
+	// Slug is typically generated from Name.
+}
+
+// CreateTagRootRequest defines the input for creating a new tag by a root user for a target user.
+type CreateTagRootRequest struct {
+	TargetUserID uuid.UUID `json:"target_user_id" validate:"required"`
+	Name         string    `json:"name" validate:"required,min=1,max=100"`
+}
