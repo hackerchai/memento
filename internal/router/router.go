@@ -84,10 +84,26 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	rootConfigGroup.Get("/:id", p.AppConfigHandler.GetConfigByUserIDRoot)    // :id is target user ID
 	rootConfigGroup.Put("/:id", p.AppConfigHandler.UpdateConfigByUserIDRoot) // :id is target user ID
 
+	// Root Article routes (nested under root user routes)
+	rootArticleGroup := rootGroup.Group("/articles")                     // --> /api/v1/users/root/articles
+	rootArticleGroup.Get("/user", p.ArticleHandler.ListUserArticlesRoot) // GET /user?user_id=...
+	rootArticleGroup.Get("/:id", p.ArticleHandler.GetArticleRoot)
+	rootArticleGroup.Delete("/:id", p.ArticleHandler.DeleteArticleRoot)
+	rootArticleGroup.Post("/:id/rescrape", p.ArticleHandler.ReScrapeArticleRoot)
+
+	// --- Regular User Routes (Protected) ---
+
 	// Article routes
-	articleGroup := protected.Group("/articles")
+	articleGroup := protected.Group("/articles") // --> /api/v1/articles
 	articleGroup.Post("", p.ArticleHandler.CreateArticle)
-	// TODO: Add other article routes (GET, DELETE etc.) later
+	articleGroup.Get("", p.ArticleHandler.ListArticles)                         // List user's articles
+	articleGroup.Get("/:id", p.ArticleHandler.GetArticle)                       // Get specific article
+	articleGroup.Delete("/:id", p.ArticleHandler.DeleteArticle)                 // Delete article
+	articleGroup.Patch("/:id", p.ArticleHandler.UpdateArticleStatus)            // Update read/starred
+	articleGroup.Post("/:id/rescrape", p.ArticleHandler.ReScrapeArticle)        // Re-scrape
+	articleGroup.Post("/:id/tags", p.ArticleHandler.AddTagsToArticle)           // Add tags
+	articleGroup.Delete("/:id/tags", p.ArticleHandler.RemoveTagsFromArticle)    // Remove tags
+	articleGroup.Patch("/:id/category", p.ArticleHandler.UpdateArticleCategory) // Change category
 
 	// SSE route
 	sseGroup := protected.Group("/sse")
