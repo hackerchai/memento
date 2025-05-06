@@ -23,5 +23,7 @@ var Module = fx.Options(
 		},
 		NewArticleService, // This now implicitly requires AppConfigRepository
 		NewAppConfigService,
+		NewCategoryService,
+		NewTagService,
 	),
 )
