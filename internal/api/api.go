@@ -28,5 +28,13 @@ var Module = fx.Module("api",
 			NewAppConfigHandler,
 			fx.ParamTags(``, ``),
 		),
+		fx.Annotate(
+			NewCategoryHandler,
+			fx.ParamTags(``, ``),
+		),
+		fx.Annotate(
+			NewTagHandler,
+			fx.ParamTags(``, ``),
+		),
 	),
 )
