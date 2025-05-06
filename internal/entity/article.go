@@ -35,7 +35,10 @@ type Article struct {
 	OgImageURL     *string       `bun:"og_image_url" json:"og_image_url,omitempty"`
 	URL            string        `bun:"url,notnull" json:"url"`
 	IsOffline      bool          `bun:"is_offline,notnull,default:false" json:"is_offline"`
-	Status         ArticleStatus `bun:"status,notnull,default:0" json:"status"` // Use the defined type
+	Status         ArticleStatus `bun:"status,notnull,default:0" json:"status"`             // Use the defined type
+	IsRead         bool          `bun:"is_read,notnull,default:false" json:"is_read"`       // New field
+	IsStarred      bool          `bun:"is_starred,notnull,default:false" json:"is_starred"` // New field
+	OriginalHtml   *string       `bun:"original_html" json:"-"`                             // New field, excluded from JSON by default
 	CreatedAt      time.Time     `bun:"created_at,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt      time.Time     `bun:"updated_at,notnull,default:current_timestamp" json:"updated_at"`
 
@@ -81,6 +84,8 @@ type ArticleResponse struct {
 	OgImageURL     *string       `json:"og_image_url,omitempty"`
 	IsOffline      bool          `json:"is_offline"`
 	Status         ArticleStatus `json:"status"`
+	IsRead         bool          `json:"is_read"`    // New field
+	IsStarred      bool          `json:"is_starred"` // New field
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
 	// TODO: Consider adding simplified CategoryName and TagNames fields if needed
@@ -105,8 +110,107 @@ func (a *Article) ToResponseDTO() *ArticleResponse {
 		OgImageURL:     a.OgImageURL,
 		IsOffline:      a.IsOffline,
 		Status:         a.Status,
+		IsRead:         a.IsRead,
+		IsStarred:      a.IsStarred,
 		CreatedAt:      a.CreatedAt,
 		UpdatedAt:      a.UpdatedAt,
 		// Map Category/Tags here if added to DTO and loaded in the entity
 	}
+}
+
+// ArticleDetailResponse defines the data structure for detailed article API responses,
+// including potentially large fields like HTML and PlainText, but excluding OriginalHtml.
+type ArticleDetailResponse struct {
+	ID             uuid.UUID     `json:"id"`
+	UserID         uuid.UUID     `json:"user_id"`
+	CategoryID     *uuid.UUID    `json:"category_id,omitempty"`
+	URL            string        `json:"url"`
+	Title          string        `json:"title"`
+	Html           *string       `json:"html,omitempty"` // Include HTML
+	Author         *string       `json:"author,omitempty"`
+	Description    *string       `json:"description,omitempty"`
+	PlainText      *string       `json:"plain_text,omitempty"` // Include PlainText
+	LLMDescription *string       `json:"llm_description,omitempty"`
+	OgImageURL     *string       `json:"og_image_url,omitempty"`
+	IsOffline      bool          `json:"is_offline"`
+	Status         ArticleStatus `json:"status"`
+	IsRead         bool          `json:"is_read"`
+	IsStarred      bool          `json:"is_starred"`
+	CreatedAt      time.Time     `json:"created_at"`
+	UpdatedAt      time.Time     `json:"updated_at"`
+	// TODO: Consider adding full Category/Tags details if needed
+	Category *CategoryResponse `json:"category,omitempty"` // Use CategoryResponse DTO
+	Tags     []*TagResponse    `json:"tags,omitempty"`     // Use TagResponse DTO
+}
+
+// ToDetailResponseDTO converts an Article entity to its ArticleDetailResponse DTO representation.
+func (a *Article) ToDetailResponseDTO() *ArticleDetailResponse {
+	if a == nil {
+		return nil
+	}
+	// Convert loaded Tags to TagResponse DTOs
+	tagDTOs := make([]*TagResponse, 0, len(a.Tags))
+	for _, tagEntity := range a.Tags {
+		if tagEntity != nil {
+			tagDTOs = append(tagDTOs, tagEntity.ToResponseDTO())
+		}
+	}
+
+	// Convert loaded Category to CategoryResponse DTO
+	var categoryDTO *CategoryResponse
+	if a.Category != nil {
+		categoryDTO = a.Category.ToResponseDTO()
+	}
+
+	return &ArticleDetailResponse{
+		ID:             a.ID,
+		UserID:         a.UserID,
+		CategoryID:     a.CategoryID, // Keep the ID field
+		URL:            a.URL,
+		Title:          a.Title,
+		Html:           a.Html,
+		Author:         a.Author,
+		Description:    a.Description,
+		PlainText:      a.PlainText,
+		LLMDescription: a.LLMDescription,
+		OgImageURL:     a.OgImageURL,
+		IsOffline:      a.IsOffline,
+		Status:         a.Status,
+		IsRead:         a.IsRead,
+		IsStarred:      a.IsStarred,
+		CreatedAt:      a.CreatedAt,
+		UpdatedAt:      a.UpdatedAt,
+		Category:       categoryDTO, // Map category DTO
+		Tags:           tagDTOs,     // Map tag DTOs
+	}
+}
+
+// UpdateArticleStatusRequest defines the expected body for PATCH requests
+// to update the read/starred status of an article.
+// Using pointers allows distinguishing between not providing a field and setting it to false.
+type UpdateArticleStatusRequest struct {
+	IsRead    *bool `json:"is_read,omitempty"`
+	IsStarred *bool `json:"is_starred,omitempty"`
+}
+
+// CreateArticleRequest defines the expected request body for creating an article.
+type CreateArticleRequest struct {
+	URL          string   `json:"url" validate:"required,url"`
+	CategoryName string   `json:"category_name,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+}
+
+// AddTagsRequest defines the expected body for adding tags to an article.
+type AddTagsRequest struct {
+	Tags []string `json:"tags" validate:"required,min=1,dive,required"` // Requires at least one tag, each tag name is required
+}
+
+// RemoveTagsRequest defines the expected body for removing tags from an article.
+type RemoveTagsRequest struct {
+	Tags []string `json:"tags" validate:"required,min=1,dive,required"` // Requires at least one tag, each tag name is required
+}
+
+// UpdateArticleCategoryRequest defines the expected body for changing an article's category.
+type UpdateArticleCategoryRequest struct {
+	Category string `json:"category" validate:"required"` // Requires the Name of the new category
 }

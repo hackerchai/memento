@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -122,17 +123,25 @@ func (r *ArticleRepository) FindByID(ctx context.Context, id uuid.UUID, userID u
 }
 
 // FindByUserID retrieves a paginated list of articles for a specific user.
-// Allows filtering by status and optionally loads relationships.
-func (r *ArticleRepository) FindByUserID(ctx context.Context, userID uuid.UUID, status *int, limit, offset int, loadRelations bool) ([]entity.Article, int, error) {
+// Allows filtering by status, is_read, and is_starred. Optionally loads relationships.
+func (r *ArticleRepository) FindByUserID(ctx context.Context, userID uuid.UUID, status *int, isRead, isStarred *bool, limit, offset int, loadRelations bool) ([]entity.Article, int, error) {
 	var articles []entity.Article
 	query := r.db.NewSelect().
 		Model(&articles).
 		Where("a.user_id = ?", userID)
 
+	// Apply filters
 	if status != nil {
 		query = query.Where("a.status = ?", *status)
 	}
+	if isRead != nil {
+		query = query.Where("a.is_read = ?", *isRead)
+	}
+	if isStarred != nil {
+		query = query.Where("a.is_starred = ?", *isStarred)
+	}
 
+	// Load relations if requested
 	if loadRelations {
 		query = query.Relation("Category").Relation("Tags")
 	}
@@ -166,8 +175,8 @@ func (r *ArticleRepository) Update(ctx context.Context, article *entity.Article,
 		res, err := tx.NewUpdate().
 			Model(article).
 			// Specify columns to avoid updating URL/UserID/CreatedAt
-			Set("title = ?, html = ?, author = ?, description = ?, plain_text = ?, llm_description = ?, og_image_url = ?, is_offline = ?, status = ?, updated_at = NOW()",
-				article.Title, article.Html, article.Author, article.Description, article.PlainText, article.LLMDescription, article.OgImageURL, article.IsOffline, article.Status).
+			Set("title = ?, html = ?, author = ?, description = ?, plain_text = ?, llm_description = ?, og_image_url = ?, is_offline = ?, status = ?, is_read = ?, is_starred = ?, original_html = ?, updated_at = NOW()",
+				article.Title, article.Html, article.Author, article.Description, article.PlainText, article.LLMDescription, article.OgImageURL, article.IsOffline, article.Status, article.IsRead, article.IsStarred, article.OriginalHtml).
 			Where("id = ? AND user_id = ?", article.ID, article.UserID).
 			Exec(ctx)
 		if err != nil {
@@ -291,4 +300,244 @@ func (r *ArticleRepository) FindByURL(ctx context.Context, url string, userID uu
 		return nil, err
 	}
 	return article, nil
+}
+
+// UpdateStatusFields updates only the is_read and is_starred fields of an article.
+func (r *ArticleRepository) UpdateStatusFields(ctx context.Context, id uuid.UUID, userID uuid.UUID, isRead, isStarred *bool) error {
+	log := r.logger.With().Stringer("id", id).Stringer("userID", userID).Logger()
+
+	if isRead == nil && isStarred == nil {
+		log.WarnX(ctx).Msg("UpdateStatusFields called with no fields to update")
+		return nil // Nothing to update
+	}
+
+	query := r.db.NewUpdate().Model((*entity.Article)(nil))
+
+	if isRead != nil {
+		query = query.Set("is_read = ?", *isRead)
+	}
+	if isStarred != nil {
+		query = query.Set("is_starred = ?", *isStarred)
+	}
+
+	// Always update the updated_at timestamp when modifying status
+	query = query.Set("updated_at = NOW()")
+
+	query = query.Where("id = ? AND user_id = ?", id, userID)
+
+	res, err := query.Exec(ctx)
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to update article status fields")
+		return err // Let the service layer handle error translation
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		log.WarnX(ctx).Msg("Article not found or not authorized for status update")
+		return sql.ErrNoRows // Indicate not found
+	}
+
+	return nil
+}
+
+// FindByIDRoot retrieves an article by its ID, ignoring the caller's user ID (Root only).
+// Optionally loads relationships (Category, Tags).
+func (r *ArticleRepository) FindByIDRoot(ctx context.Context, id uuid.UUID, loadRelations bool) (*entity.Article, error) {
+	article := new(entity.Article)
+	query := r.db.NewSelect().
+		Model(article).
+		Where("a.id = ?", id) // Use alias 'a', only filter by article ID
+
+	if loadRelations {
+		query = query.Relation("Category").Relation("Tags")
+	}
+
+	err := query.Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows // Return specific error
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("id", id).Msg("[Root] Failed to find article by ID")
+		return nil, err // Return original db error
+	}
+	return article, nil
+}
+
+// FindByUserIDRoot retrieves articles for a specific user (Root only).
+// Allows filtering by status, is_read, and is_starred. Optionally loads relationships.
+func (r *ArticleRepository) FindByUserIDRoot(ctx context.Context, targetUserID uuid.UUID, status *int, isRead, isStarred *bool, limit, offset int, loadRelations bool) ([]entity.Article, int, error) {
+	var articles []entity.Article
+	// Use targetUserID in the WHERE clause
+	query := r.db.NewSelect().
+		Model(&articles).
+		Where("a.user_id = ?", targetUserID)
+
+	// Apply filters
+	if status != nil {
+		query = query.Where("a.status = ?", *status)
+	}
+	if isRead != nil {
+		query = query.Where("a.is_read = ?", *isRead)
+	}
+	if isStarred != nil {
+		query = query.Where("a.is_starred = ?", *isStarred)
+	}
+
+	// Load relations if requested
+	if loadRelations {
+		query = query.Relation("Category").Relation("Tags")
+	}
+
+	query = query.Order("a.created_at DESC").Limit(limit).Offset(offset)
+
+	count, err := query.ScanAndCount(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Article{}, 0, nil
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("targetUserID", targetUserID).Msg("[Root] Failed to find articles by target user ID")
+		return nil, 0, err
+	}
+
+	return articles, count, nil
+}
+
+// DeleteRoot removes an article by its ID, specifying the target user ID (Root only).
+// Deletes associated tags for that user.
+func (r *ArticleRepository) DeleteRoot(ctx context.Context, id uuid.UUID, targetUserID uuid.UUID) error {
+	txErr := r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// 1. Delete tag associations for the target user and article
+		_, err := tx.NewDelete().
+			Model((*entity.ArticleTag)(nil)).
+			Where("article_id = ? AND user_id = ?", id, targetUserID). // Use targetUserID
+			Exec(ctx)
+		if err != nil {
+			r.logger.ErrorX(ctx).Err(err).Stringer("articleID", id).Stringer("targetUserID", targetUserID).Msg("[Root] Failed to delete article tags associations during article deletion")
+			return err
+		}
+
+		// 2. Delete the article itself, ensuring it belongs to the target user
+		res, err := tx.NewDelete().
+			Model((*entity.Article)(nil)).
+			Where("id = ? AND user_id = ?", id, targetUserID). // Use targetUserID
+			Exec(ctx)
+		if err != nil {
+			r.logger.ErrorX(ctx).Err(err).Stringer("id", id).Stringer("targetUserID", targetUserID).Msg("[Root] Failed to delete article in transaction")
+			return err
+		}
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected == 0 {
+			return sql.ErrNoRows // Article not found for the specified user
+		}
+		return nil
+	})
+
+	if txErr != nil {
+		if errors.Is(txErr, sql.ErrNoRows) {
+			r.logger.WarnX(ctx).Stringer("id", id).Stringer("targetUserID", targetUserID).Msg("[Root] Attempted to delete non-existent article for target user")
+			return sql.ErrNoRows // Propagate ErrNoRows
+		}
+		r.logger.ErrorX(ctx).Err(txErr).Stringer("id", id).Stringer("targetUserID", targetUserID).Msg("[Root] Failed to execute delete article transaction")
+		return txErr
+	}
+
+	r.logger.InfoX(ctx).Stringer("id", id).Stringer("targetUserID", targetUserID).Msg("[Root] Article deleted successfully")
+	return nil
+}
+
+// AddTags associates a list of tags with an article.
+// It avoids creating duplicate associations.
+func (r *ArticleRepository) AddTags(ctx context.Context, article *entity.Article, tagsToAdd []*entity.Tag) error {
+	if len(tagsToAdd) == 0 {
+		return nil
+	}
+
+	articleTags := make([]entity.ArticleTag, len(tagsToAdd))
+	for i, tag := range tagsToAdd {
+		articleTags[i] = entity.ArticleTag{
+			ArticleID: article.ID,
+			TagID:     tag.ID,
+			UserID:    article.UserID, // Include UserID
+			// CreatedAt defaults
+		}
+	}
+
+	// Use ON CONFLICT DO NOTHING to silently ignore duplicates
+	// This requires specifying the primary key columns of article_tags
+	_, err := r.db.NewInsert().
+		Model(&articleTags).
+		On("CONFLICT (article_id, tag_id) DO NOTHING").
+		Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to add tags to article: %w", err)
+	}
+
+	// Update article's updated_at timestamp
+	_, err = r.db.NewUpdate().
+		Model((*entity.Article)(nil)).
+		Set("updated_at = NOW()").
+		Where("id = ?", article.ID).
+		Exec(ctx)
+	if err != nil {
+		// Log this error but don't necessarily fail the whole operation
+		fmt.Printf("Warning: Failed to update article timestamp after adding tags: %v\n", err)
+	}
+
+	return nil
+}
+
+// RemoveTags disassociates a list of tags from an article.
+func (r *ArticleRepository) RemoveTags(ctx context.Context, article *entity.Article, tagsToRemove []*entity.Tag) error {
+	if len(tagsToRemove) == 0 {
+		return nil
+	}
+
+	tagIDsToRemove := make([]uuid.UUID, len(tagsToRemove))
+	for i, tag := range tagsToRemove {
+		tagIDsToRemove[i] = tag.ID
+	}
+
+	// Delete from the join table
+	_, err := r.db.NewDelete().
+		Model((*entity.ArticleTag)(nil)).
+		Where("article_id = ?", article.ID).
+		Where("tag_id IN (?)", bun.In(tagIDsToRemove)).
+		Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to remove tags from article: %w", err)
+	}
+
+	// Update article's updated_at timestamp
+	_, err = r.db.NewUpdate().
+		Model((*entity.Article)(nil)).
+		Set("updated_at = NOW()").
+		Where("id = ?", article.ID).
+		Exec(ctx)
+	if err != nil {
+		fmt.Printf("Warning: Failed to update article timestamp after removing tags: %v\n", err)
+	}
+
+	return nil
+}
+
+// UpdateCategoryID changes the category_id of an article.
+func (r *ArticleRepository) UpdateCategoryID(ctx context.Context, articleID, userID, newCategoryID uuid.UUID) error {
+	res, err := r.db.NewUpdate().
+		Model((*entity.Article)(nil)).
+		Where("id = ? AND user_id = ?", articleID, userID).
+		Set("category_id = ?", newCategoryID).
+		Set("updated_at = NOW()"). // Also update timestamp
+		Exec(ctx)
+
+	if err != nil {
+		return err // DB error
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		return sql.ErrNoRows // Not found or wrong user
+	}
+	return nil
 }

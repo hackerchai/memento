@@ -298,3 +298,21 @@ func (r *TagRepository) DeleteBySlug(ctx context.Context, slug string, userID uu
 	r.logger.InfoX(ctx).Str("slug", slug).Stringer("userID", userID).Msg("Tag deleted successfully by slug")
 	return nil
 }
+
+// FindByNames finds existing tags by their names for a specific user.
+func (r *TagRepository) FindByNames(ctx context.Context, names []string, userID uuid.UUID) ([]*entity.Tag, error) {
+	if len(names) == 0 {
+		return []*entity.Tag{}, nil
+	}
+
+	var tags []*entity.Tag
+	err := r.db.NewSelect().
+		Model(&tags).
+		Where("name IN (?)", bun.In(names)).
+		Where("user_id = ?", userID).
+		Scan(ctx)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) { // ErrNoRows is not an error, just means none found
+		return nil, err
+	}
+	return tags, nil
+}

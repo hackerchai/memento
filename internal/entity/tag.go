@@ -22,3 +22,22 @@ type Tag struct {
 	// User     *User      `bun:"rel:belongs-to,join:user_id=id"`
 	Articles []*Article `bun:"m2m:article_tags,join:Tag=Article"` // Many-to-many relation
 }
+
+// --- DTOs --- //
+
+// TagResponse defines the data structure for tag API responses.
+type TagResponse struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// ToResponseDTO converts a Tag entity to its TagResponse DTO representation.
+func (t *Tag) ToResponseDTO() *TagResponse {
+	if t == nil {
+		return nil
+	}
+	return &TagResponse{
+		Name: t.Name,
+		Slug: t.Slug,
+	}
+}

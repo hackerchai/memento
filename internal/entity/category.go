@@ -21,3 +21,22 @@ type Category struct {
 	// Relationships (optional, depending on query needs)
 	// User *User `bun:"rel:belongs-to,join:user_id=id"` // Example if User entity is defined
 }
+
+// --- DTOs --- //
+
+// CategoryResponse defines the data structure for category API responses.
+type CategoryResponse struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// ToResponseDTO converts a Category entity to its CategoryResponse DTO representation.
+func (c *Category) ToResponseDTO() *CategoryResponse {
+	if c == nil {
+		return nil
+	}
+	return &CategoryResponse{
+		Name: c.Name,
+		Slug: c.Slug,
+	}
+}
