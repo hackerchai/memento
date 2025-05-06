@@ -152,6 +152,21 @@ definitions:
     - StatusFailed
     - StatusLLMSummarized
     - StatusAutoTagged
+  entity.CategoryDetailResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
   entity.CategoryResponse:
     properties:
       name:
@@ -171,6 +186,48 @@ definitions:
         type: string
     required:
     - url
+    type: object
+  entity.CreateCategoryRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
+  entity.CreateCategoryRootRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      target_user_id:
+        type: string
+    required:
+    - name
+    - target_user_id
+    type: object
+  entity.CreateTagRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
+  entity.CreateTagRootRequest:
+    properties:
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      target_user_id:
+        type: string
+    required:
+    - name
+    - target_user_id
     type: object
   entity.CreateUserRequest:
     properties:
@@ -239,6 +296,21 @@ definitions:
         type: array
     required:
     - tags
+    type: object
+  entity.TagDetailResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
     type: object
   entity.TagResponse:
     properties:
@@ -937,6 +1009,272 @@ paths:
       summary: Register a new user
       tags:
       - auth
+  /categories:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of categories for the authenticated
+        user.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved categories
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.CategoryDetailResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List categories
+      tags:
+      - categories
+    post:
+      consumes:
+      - application/json
+      description: Creates a new category for the authenticated user.
+      parameters:
+      - description: Category details
+        in: body
+        name: category
+        required: true
+        schema:
+          $ref: '#/definitions/entity.CreateCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Category created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.CategoryDetailResponse'
+              type: object
+        "400":
+          description: 'Validation error or invalid JSON (code: 00004 or 00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error or conflict (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a category
+      tags:
+      - categories
+  /categories/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a category by its ID for the authenticated user. Associated
+        articles will be unlinked (category set to null).
+      parameters:
+      - description: Category ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category deleted successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Invalid category ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Category not found (code: 03001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a category
+      tags:
+      - categories
+  /categories/{identifier}/articles:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of articles associated with a specific
+        category (by ID or slug) for the authenticated user. Articles are ordered
+        by creation date (newest first).
+      parameters:
+      - description: Category ID or Slug
+        in: path
+        name: identifier
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved articles
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.ArticleResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters or category identifier (code:
+            00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Category not found (code: 03001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get articles by category
+      tags:
+      - categories
+      - articles
+  /categories/search:
+    get:
+      consumes:
+      - application/json
+      description: Searches categories by name or slug for the authenticated user.
+        Case-insensitive.
+      parameters:
+      - description: Search query term
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved categories matching the query
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.CategoryDetailResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters or missing query (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Search categories
+      tags:
+      - categories
   /config:
     get:
       description: Retrieves the application configuration settings for the currently
@@ -1039,6 +1377,269 @@ paths:
       summary: Establish Server-Sent Event connection
       tags:
       - sse
+  /tags:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of tags for the authenticated user.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved tags
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.TagDetailResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List tags
+      tags:
+      - tags
+    post:
+      consumes:
+      - application/json
+      description: Creates a new tag for the authenticated user.
+      parameters:
+      - description: Tag details
+        in: body
+        name: tag
+        required: true
+        schema:
+          $ref: '#/definitions/entity.CreateTagRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Tag created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.TagDetailResponse'
+              type: object
+        "400":
+          description: 'Validation error or invalid JSON (code: 00004 or 00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error or conflict (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a tag
+      tags:
+      - tags
+  /tags/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a tag by its ID for the authenticated user. Associated
+        article-tag links will also be removed.
+      parameters:
+      - description: Tag ID
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tag deleted successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Invalid tag ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Tag not found (code: 02001 with details)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a tag
+      tags:
+      - tags
+  /tags/{identifier}/articles:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of articles associated with a specific
+        tag (by ID or slug) for the authenticated user. Articles are ordered by creation
+        date (newest first).
+      parameters:
+      - description: Tag ID or Slug
+        in: path
+        name: identifier
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved articles
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.ArticleResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters or tag identifier (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Tag not found (code: 02001 with details)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get articles by tag
+      tags:
+      - tags
+      - articles
+  /tags/search:
+    get:
+      consumes:
+      - application/json
+      description: Searches tags by name or slug for the authenticated user. Case-insensitive.
+      parameters:
+      - description: Search query term
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved tags matching the query
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.TagDetailResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination parameters or missing query (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Search tags
+      tags:
+      - tags
   /users/email:
     put:
       consumes:
@@ -1587,6 +2188,236 @@ paths:
       tags:
       - articles
       - root
+  /users/root/categories:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of categories for a specified target
+        user. Requires root privileges.
+      parameters:
+      - description: Target User ID to filter categories for
+        format: uuid
+        in: query
+        name: target_user_id
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved categories
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.CategoryDetailResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination or missing/invalid target_user_id (code:
+            00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List categories for a user (Root)
+      tags:
+      - categories
+      - root
+    post:
+      consumes:
+      - application/json
+      description: Creates a new category for a specified target user. Requires root
+        privileges.
+      parameters:
+      - description: Category details including target user ID
+        in: body
+        name: category
+        required: true
+        schema:
+          $ref: '#/definitions/entity.CreateCategoryRootRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Category created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.CategoryDetailResponse'
+              type: object
+        "400":
+          description: 'Validation error or invalid JSON (code: 00004 or 00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error or conflict (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a category for a user (Root)
+      tags:
+      - categories
+      - root
+  /users/root/categories/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a category by its ID. Requires root privileges.
+      parameters:
+      - description: Category ID to delete
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Category deleted successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Invalid category ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Category not found (code: 03001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a category (Root)
+      tags:
+      - categories
+      - root
+  /users/root/categories/{identifier}/articles:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of articles for a specific category
+        (by ID or slug). Requires root privileges.
+      parameters:
+      - description: Category ID or Slug
+        in: path
+        name: identifier
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved articles
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.ArticleResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination or category identifier (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Category not found (code: 03001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get articles by category (Root)
+      tags:
+      - categories
+      - articles
+      - root
   /users/root/config:
     get:
       description: Retrieves a paginated list of all user application configurations.
@@ -1766,5 +2597,234 @@ paths:
       summary: Update user's app configuration (Root only)
       tags:
       - config
+      - root
+  /users/root/tags:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of tags for a specified target user.
+        Requires root privileges.
+      parameters:
+      - description: Target User ID to filter tags for
+        format: uuid
+        in: query
+        name: target_user_id
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved tags
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.TagDetailResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination or missing/invalid target_user_id (code:
+            00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List tags for a user (Root)
+      tags:
+      - tags
+      - root
+    post:
+      consumes:
+      - application/json
+      description: Creates a new tag for a specified target user. Requires root privileges.
+      parameters:
+      - description: Tag details including target user ID
+        in: body
+        name: tag
+        required: true
+        schema:
+          $ref: '#/definitions/entity.CreateTagRootRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Tag created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.TagDetailResponse'
+              type: object
+        "400":
+          description: 'Validation error or invalid JSON (code: 00004 or 00003)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error or conflict (code: 00001 or 00006)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a tag for a user (Root)
+      tags:
+      - tags
+      - root
+  /users/root/tags/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a tag by its ID. Requires root privileges.
+      parameters:
+      - description: Tag ID to delete
+        format: uuid
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tag deleted successfully
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: 'Invalid tag ID format (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Tag not found (code: 02001 with details)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a tag (Root)
+      tags:
+      - tags
+      - root
+  /users/root/tags/{identifier}/articles:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of articles for a specific tag (by ID
+        or slug). Requires root privileges.
+      parameters:
+      - description: Tag ID or Slug
+        in: path
+        name: identifier
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        maximum: 100
+        minimum: 1
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved articles
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  allOf:
+                  - $ref: '#/definitions/response.PaginationResponse'
+                  - properties:
+                      data:
+                        items:
+                          $ref: '#/definitions/entity.ArticleResponse'
+                        type: array
+                    type: object
+              type: object
+        "400":
+          description: 'Invalid pagination or tag identifier (code: 00004)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 'Unauthorized (code: 01001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: 'Forbidden (not root user - code: 01011)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: 'Tag not found (code: 02001 with details)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: 'Internal server error (code: 00001)'
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get articles by tag (Root)
+      tags:
+      - tags
+      - articles
       - root
 swagger: "2.0"
