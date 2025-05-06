@@ -32,6 +32,8 @@ type RegisterRoutesParams struct {
 	ArticleHandler   *api.ArticleHandler
 	SSEHandler       *api.SSEHandler
 	AppConfigHandler *api.AppConfigHandler
+	CategoryHandler  *api.CategoryHandler
+	TagHandler       *api.TagHandler
 }
 
 // RegisterRoutes registers all application routes.
@@ -113,4 +115,37 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	appConfigGroup := protected.Group("/config")
 	appConfigGroup.Get("/", p.AppConfigHandler.GetOwnConfig)
 	appConfigGroup.Put("/", p.AppConfigHandler.UpdateOwnConfig)
+
+	// Category routes (for authenticated user)
+	categoryGroup := protected.Group("/categories")
+	categoryGroup.Post("", p.CategoryHandler.CreateCategory) // Create category
+	categoryGroup.Get("", p.CategoryHandler.ListCategories)
+	categoryGroup.Get("/search", p.CategoryHandler.SearchCategories) // Search user's categories
+	categoryGroup.Get("/:identifier/articles", p.CategoryHandler.GetArticlesByCategory)
+	categoryGroup.Delete("/:id", p.CategoryHandler.DeleteCategory)
+
+	// Tag routes (for authenticated user)
+	tagGroup := protected.Group("/tags")
+	tagGroup.Post("", p.TagHandler.CreateTag) // Create tag
+	tagGroup.Get("", p.TagHandler.ListTags)
+	tagGroup.Get("/search", p.TagHandler.SearchTags) // Search user's tags
+	tagGroup.Get("/:identifier/articles", p.TagHandler.GetArticlesByTag)
+	tagGroup.Delete("/:id", p.TagHandler.DeleteTag)
+
+	// --- Root Routes --- //
+	// (RootOnly middleware is applied to rootGroup)
+
+	// Root Category routes
+	rootCategoriesGroup := rootGroup.Group("/categories")              // --> /api/v1/users/root/categories
+	rootCategoriesGroup.Post("", p.CategoryHandler.CreateCategoryRoot) // Create category for target user
+	rootCategoriesGroup.Get("", p.CategoryHandler.ListCategoriesRoot)  // Requires target_user_id query param
+	rootCategoriesGroup.Get("/:identifier/articles", p.CategoryHandler.GetArticlesByCategoryRoot)
+	rootCategoriesGroup.Delete("/:id", p.CategoryHandler.DeleteCategoryRoot)
+
+	// Root Tag routes
+	rootTagsGroup := rootGroup.Group("/tags")          // --> /api/v1/users/root/tags
+	rootTagsGroup.Post("", p.TagHandler.CreateTagRoot) // Create tag for target user
+	rootTagsGroup.Get("", p.TagHandler.ListTagsRoot)   // Requires target_user_id query param
+	rootTagsGroup.Get("/:identifier/articles", p.TagHandler.GetArticlesByTagRoot)
+	rootTagsGroup.Delete("/:id", p.TagHandler.DeleteTagRoot)
 }
