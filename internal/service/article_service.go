@@ -23,7 +23,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/hackerchai/memento/internal/config"
 	"github.com/hackerchai/memento/internal/entity"
+	"github.com/hackerchai/memento/internal/errmsg"
 	"github.com/hackerchai/memento/internal/repository"
+	"github.com/hackerchai/memento/internal/response"
 	"github.com/hackerchai/memento/internal/sse"
 	"github.com/hackerchai/memento/internal/storage"
 	"github.com/hackerchai/memento/pkg/xlog"
@@ -165,6 +167,7 @@ func (s *ArticleService) processArticleInBackground(articleID, userID uuid.UUID,
 	var processingErr error
 	var finalStatus entity.ArticleStatus = entity.StatusFailed // Default to failed
 	var errorMessage string
+	var rawHTML string         // Store raw HTML
 	var finalTitle string      // Store title for notification
 	var finalOgImageURL string // Store final OG image URL
 
@@ -215,7 +218,7 @@ func (s *ArticleService) processArticleInBackground(articleID, userID uuid.UUID,
 	}()
 
 	// 1. Fetch and Extract Content
-	fetchedArticle, _, processingErr = s.fetchAndExtractContent(bgCtx, articleURL)
+	fetchedArticle, rawHTML, processingErr = s.fetchAndExtractContent(bgCtx, articleURL)
 	if processingErr != nil {
 		errorMessage = fmt.Sprintf("Failed to fetch/extract content: %v", processingErr)
 		log.ErrorX(bgCtx).Err(processingErr).Msg(errorMessage)
@@ -308,6 +311,9 @@ func (s *ArticleService) processArticleInBackground(articleID, userID uuid.UUID,
 		OgImageURL:     &finalOgImageURL,
 		IsOffline:      appConfig.ScrapeImgOffline,
 		Status:         entity.StatusCompleted, // Tentative status for update
+		IsRead:         false,                  // Default value
+		IsStarred:      false,                  // Default value
+		OriginalHtml:   &rawHTML,               // Store original HTML
 	}
 
 	// 5. Update Article in DB with content and tags
@@ -595,4 +601,401 @@ func (s *ArticleService) AutoTagArticle(ctx context.Context, articleID, userID u
 		log.ErrorX(ctx).Err(err).Msg("Failed to format LLM tags SSE message")
 	}
 	return errors.New("AutoTagArticle not implemented")
+}
+
+// GetArticle retrieves a single article by its ID for the authenticated user.
+func (s *ArticleService) GetArticle(ctx context.Context, articleID, userID uuid.UUID) (*entity.Article, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Logger()
+
+	// Load relations (Category, Tags) by default for single article view? Decide policy. Let's load them for now.
+	article, err := s.articleRepo.FindByID(ctx, articleID, userID, true)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized")
+			return nil, errmsg.ErrArticleNotFound // Use specific article error
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to find article by ID")
+		return nil, errmsg.ErrDatabase // Use Database error for internal issues
+	}
+
+	return article, nil
+}
+
+// ListArticles retrieves a paginated list of articles for the authenticated user.
+// Allows filtering by is_read and is_starred status.
+func (s *ArticleService) ListArticles(ctx context.Context, userID uuid.UUID, pagination *response.PaginationRequest, isRead, isStarred *bool) (*response.PaginationResponse, error) {
+	log := s.logger.With().Stringer("userID", userID).Logger()
+	if isRead != nil {
+		log = log.With().Bool("is_read_filter", *isRead).Logger()
+	}
+	if isStarred != nil {
+		log = log.With().Bool("is_starred_filter", *isStarred).Logger()
+	}
+
+	limit := pagination.GetLimit()
+	offset := pagination.GetOffset()
+
+	// Pass filters to the repository layer
+	articles, totalCount, err := s.articleRepo.FindByUserID(ctx, userID, nil, isRead, isStarred, limit, offset, false) // Pass isRead, isStarred
+	if err != nil {
+		// ErrNoRows is not an error here, handled by empty list + zero count
+		log.ErrorX(ctx).Err(err).Msg("Failed to find articles by user ID with filters")
+		return nil, errmsg.ErrDatabase // Use Database error for internal issues
+	}
+
+	// Map entities to DTOs
+	articleDTOs := make([]*entity.ArticleResponse, len(articles))
+	for i := range articles {
+		articleDTOs[i] = articles[i].ToResponseDTO() // Use the existing method
+	}
+
+	// Manually construct the response struct
+	return &response.PaginationResponse{
+		Total: totalCount,
+		Page:  pagination.Page,
+		Data:  articleDTOs,
+	}, nil
+}
+
+// DeleteArticle deletes an article by its ID for the authenticated user.
+func (s *ArticleService) DeleteArticle(ctx context.Context, articleID, userID uuid.UUID) error {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Logger()
+	// NOTE: We are NOT deleting cached images as per user instruction.
+	err := s.articleRepo.Delete(ctx, articleID, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized for deletion")
+			return errmsg.ErrArticleNotFound // Use specific article error
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to delete article")
+		return errmsg.ErrDatabase // Use Database error for internal issues
+	}
+
+	return nil
+}
+
+// UpdateArticleStatus updates the read/starred status of an article.
+func (s *ArticleService) UpdateArticleStatus(ctx context.Context, articleID, userID uuid.UUID, req *entity.UpdateArticleStatusRequest) (*entity.ArticleResponse, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Logger()
+
+	if req.IsRead == nil && req.IsStarred == nil {
+		log.WarnX(ctx).Msg("Update status request received with no fields to update")
+		// Optionally, return the current status without hitting the DB again?
+		// For now, let's just return an error indicating nothing was requested.
+		return nil, errmsg.ErrValidation.WithDetails(map[string]string{"body": "at least one field (is_read or is_starred) must be provided"})
+	}
+
+	// Call the repository method to update only specific fields
+	err := s.articleRepo.UpdateStatusFields(ctx, articleID, userID, req.IsRead, req.IsStarred)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized for status update")
+			return nil, errmsg.ErrArticleNotFound // Use specific article error
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to update article status fields in repository")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// Fetch the updated article to return its latest state
+	// We could potentially construct the response manually if performance is critical,
+	// but fetching ensures consistency, especially with updated_at.
+	updatedArticle, err := s.GetArticle(ctx, articleID, userID) // Reuse existing GetArticle
+	if err != nil {
+		// This shouldn't ideally happen if the update succeeded, but handle defensively
+		log.ErrorX(ctx).Err(err).Msg("Failed to fetch article after status update")
+		return nil, err // GetArticle already returns appropriate errmsg types
+	}
+
+	return updatedArticle.ToResponseDTO(), nil // Convert to DTO
+}
+
+// ReScrapeArticle triggers the background processing for an existing article again.
+// It updates the status to Pending and launches the background task,
+// returning the article's state *before* the background processing completes.
+func (s *ArticleService) ReScrapeArticle(ctx context.Context, articleID, userID uuid.UUID) (*entity.ArticleResponse, error) { // Return DTO
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Logger()
+
+	// 1. Get the existing article to retrieve URL and current tags
+	existingArticle, err := s.articleRepo.FindByID(ctx, articleID, userID, true) // Load tags
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized for re-scrape")
+			return nil, errmsg.ErrArticleNotFound
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to find article for re-scrape")
+		return nil, errmsg.ErrDatabase
+	}
+
+	tagNames := make([]string, len(existingArticle.Tags))
+	for i, tag := range existingArticle.Tags {
+		tagNames[i] = tag.Name
+	}
+
+	// 2. Update the article status to Pending immediately
+	_, err = s.db.NewUpdate().
+		Model((*entity.Article)(nil)).
+		Set("status = ?, updated_at = NOW()", entity.StatusPending). // Update status and timestamp
+		Where("id = ? AND user_id = ?", articleID, userID).
+		Exec(ctx)
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to update article status to pending for re-scrape")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// 3. Launch background goroutine for processing
+	go s.processArticleInBackground(articleID, userID, existingArticle.URL, tagNames)
+
+	// 4. Return the DTO representing the *submitted* state (StatusPending)
+	// Set the status manually on the entity we already fetched before converting
+	existingArticle.Status = entity.StatusPending
+	// Note: UpdatedAt in the returned DTO might be slightly stale, but status is correct.
+	return existingArticle.ToResponseDTO(), nil // Return DTO of the article with Pending status
+}
+
+// --- Root Operations ---
+
+// GetArticleRoot retrieves a single article by its ID (Root only).
+func (s *ArticleService) GetArticleRoot(ctx context.Context, articleID uuid.UUID) (*entity.Article, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Logger()
+
+	// Use the Root repository method which doesn't check caller ID
+	article, err := s.articleRepo.FindByIDRoot(ctx, articleID, true) // Load relations
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("[Root] Article not found")
+			return nil, errmsg.ErrArticleNotFound // Use specific article error
+		}
+		log.ErrorX(ctx).Err(err).Msg("[Root] Failed to find article by ID")
+		return nil, errmsg.ErrDatabase
+	}
+	return article, nil
+}
+
+// ListArticlesRoot retrieves a paginated list of articles for a specific target user (Root only).
+func (s *ArticleService) ListArticlesRoot(ctx context.Context, targetUserID uuid.UUID, pagination *response.PaginationRequest) (*response.PaginationResponse, error) {
+	log := s.logger.With().Stringer("targetUserID", targetUserID).Logger()
+
+	limit := pagination.GetLimit()
+	offset := pagination.GetOffset()
+
+	// Use the Root repository method
+	articles, totalCount, err := s.articleRepo.FindByUserIDRoot(ctx, targetUserID, nil, nil, nil, limit, offset, false) // Pass nil for isRead/isStarred
+	if err != nil {
+		// ErrNoRows is okay here
+		log.ErrorX(ctx).Err(err).Msg("[Root] Failed to find articles by target user ID")
+		return nil, errmsg.ErrDatabase
+	}
+
+	articleDTOs := make([]*entity.ArticleResponse, len(articles))
+	for i := range articles {
+		articleDTOs[i] = articles[i].ToResponseDTO()
+	}
+
+	return &response.PaginationResponse{
+		Total: totalCount,
+		Page:  pagination.Page,
+		Data:  articleDTOs,
+	}, nil
+}
+
+// DeleteArticleRoot deletes an article by its ID, specifying the target user (Root only).
+func (s *ArticleService) DeleteArticleRoot(ctx context.Context, articleID uuid.UUID, targetUserID uuid.UUID) error {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("targetUserID", targetUserID).Logger()
+
+	// Use the Root repository method
+	err := s.articleRepo.DeleteRoot(ctx, articleID, targetUserID) // Pass targetUserID
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("[Root] Article not found for target user or not authorized for deletion")
+			return errmsg.ErrArticleNotFound // Use specific article error
+		}
+		log.ErrorX(ctx).Err(err).Msg("[Root] Failed to delete article for target user")
+		return errmsg.ErrDatabase
+	}
+
+	return nil
+}
+
+// ReScrapeArticleRoot triggers re-scraping for a specific article ID, regardless of user (Root only).
+func (s *ArticleService) ReScrapeArticleRoot(ctx context.Context, articleID uuid.UUID) (*entity.ArticleResponse, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Logger()
+
+	// 1. Get article details (including owner UserID and URL) using FindByIDRoot
+	existingArticle, err := s.articleRepo.FindByIDRoot(ctx, articleID, true) // Load tags
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("[Root] Article not found for re-scrape")
+			return nil, errmsg.ErrArticleNotFound // Use specific article error
+		}
+		log.ErrorX(ctx).Err(err).Msg("[Root] Failed to find article for re-scrape")
+		return nil, errmsg.ErrDatabase
+	}
+	targetUserID := existingArticle.UserID // Get the owner's ID
+
+	tagNames := make([]string, len(existingArticle.Tags))
+	for i, tag := range existingArticle.Tags {
+		tagNames[i] = tag.Name
+	}
+
+	// 2. Update status to Pending (use targetUserID here)
+	_, err = s.db.NewUpdate().
+		Model((*entity.Article)(nil)).
+		Set("status = ?, updated_at = NOW()", entity.StatusPending).
+		Where("id = ? AND user_id = ?", articleID, targetUserID). // Ensure we update the correct user's article
+		Exec(ctx)
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Stringer("targetUserID", targetUserID).Msg("[Root] Failed to update article status to pending for re-scrape")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// 3. Launch background processing using the owner's UserID
+	go s.processArticleInBackground(articleID, targetUserID, existingArticle.URL, tagNames)
+
+	// 4. Return DTO with pending status
+	existingArticle.Status = entity.StatusPending
+	return existingArticle.ToResponseDTO(), nil
+}
+
+// --- New Methods for Tag and Category Management ---
+
+// AddTagsToArticle adds specified tags to an article.
+// It finds or creates the tags and associates them with the article.
+func (s *ArticleService) AddTagsToArticle(ctx context.Context, articleID, userID uuid.UUID, tagNames []string) (*entity.ArticleDetailResponse, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Strs("tags_to_add", tagNames).Logger()
+
+	// Check if article exists and belongs to user
+	article, err := s.articleRepo.FindByID(ctx, articleID, userID, false) // Don't need relations yet
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized")
+			return nil, errmsg.ErrArticleNotFound
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to find article for adding tags")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// Find or create tags by name
+	tagsMap, err := s.tagRepo.FindOrCreateByName(ctx, tagNames, userID)
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to find or create tags")
+		// Decide if this should be a fatal error or just a warning
+		return nil, errmsg.ErrDatabase.WithDetails(fmt.Sprintf("Failed to process tags: %v", err))
+	}
+
+	tagsToAdd := make([]*entity.Tag, 0, len(tagsMap))
+	for _, tag := range tagsMap {
+		tagsToAdd = append(tagsToAdd, tag)
+	}
+
+	// Use repository method to add tags (handles potential duplicates gracefully)
+	if err := s.articleRepo.AddTags(ctx, article, tagsToAdd); err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to associate tags with article")
+		return nil, errmsg.ErrDatabase.WithDetails(fmt.Sprintf("Failed to add tags: %v", err))
+	}
+
+	// Fetch the updated article with relations to return
+	updatedArticle, err := s.articleRepo.FindByID(ctx, articleID, userID, true) // Load relations
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to fetch article after adding tags")
+		return nil, errmsg.ErrDatabase // Should not happen ideally
+	}
+
+	return updatedArticle.ToDetailResponseDTO(), nil
+}
+
+// RemoveTagsFromArticle removes specified tags from an article.
+func (s *ArticleService) RemoveTagsFromArticle(ctx context.Context, articleID, userID uuid.UUID, tagNames []string) (*entity.ArticleDetailResponse, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Strs("tags_to_remove", tagNames).Logger()
+
+	// Check if article exists and belongs to user
+	article, err := s.articleRepo.FindByID(ctx, articleID, userID, false) // Don't need relations yet
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized")
+			return nil, errmsg.ErrArticleNotFound
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to find article for removing tags")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// Find tags by name (only care about existing tags for removal)
+	tagsToRemove, err := s.tagRepo.FindByNames(ctx, tagNames, userID)
+	if err != nil {
+		// Log error but proceed, we only remove tags that are found
+		log.ErrorX(ctx).Err(err).Msg("Error finding tags by name for removal, will proceed with found tags")
+	}
+
+	if len(tagsToRemove) == 0 {
+		log.WarnX(ctx).Msg("None of the specified tags were found for the user to remove")
+		// Return current article state as no changes were made? Or error? Let's return current state.
+		currentArticle, _ := s.articleRepo.FindByID(ctx, articleID, userID, true) // Best effort fetch
+		if currentArticle == nil {
+			return nil, errmsg.ErrArticleNotFound // Or database error if fetch failed
+		}
+		return currentArticle.ToDetailResponseDTO(), nil
+	}
+
+	// Use repository method to remove tags
+	if err := s.articleRepo.RemoveTags(ctx, article, tagsToRemove); err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to disassociate tags from article")
+		return nil, errmsg.ErrDatabase.WithDetails(fmt.Sprintf("Failed to remove tags: %v", err))
+	}
+
+	// Fetch the updated article with relations to return
+	updatedArticle, err := s.articleRepo.FindByID(ctx, articleID, userID, true) // Load relations
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to fetch article after removing tags")
+		return nil, errmsg.ErrDatabase // Should not happen ideally
+	}
+
+	return updatedArticle.ToDetailResponseDTO(), nil
+}
+
+// UpdateArticleCategory changes the category of an article.
+func (s *ArticleService) UpdateArticleCategory(ctx context.Context, articleID, userID uuid.UUID, newCategoryName string) (*entity.ArticleDetailResponse, error) {
+	log := s.logger.With().Stringer("articleID", articleID).Stringer("userID", userID).Str("newCategoryName", newCategoryName).Logger()
+
+	// 1. Check if article exists and belongs to user
+	_, err := s.articleRepo.FindByID(ctx, articleID, userID, false) // Check existence
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article not found or not authorized")
+			return nil, errmsg.ErrArticleNotFound
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to find article for category update")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// 2. Find the target category by name for the user
+	category, err := s.categoryRepo.FindByName(ctx, newCategoryName, userID) // Find by Name
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Target category not found for the user")
+			// Return a specific 404 error for category not found
+			return nil, errmsg.ErrCategoryNotFound
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to verify target category by name")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// 3. Update the article's category_id using the found category ID
+	err = s.articleRepo.UpdateCategoryID(ctx, articleID, userID, category.ID) // Use category.ID
+	if err != nil {
+		// repo should return ErrNoRows if article disappeared between checks
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WarnX(ctx).Msg("Article disappeared before category update could be applied")
+			return nil, errmsg.ErrArticleNotFound
+		}
+		log.ErrorX(ctx).Err(err).Msg("Failed to update article category in repository")
+		return nil, errmsg.ErrDatabase
+	}
+
+	// 4. Fetch the updated article with relations to return
+	updatedArticle, err := s.articleRepo.FindByID(ctx, articleID, userID, true) // Load relations
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to fetch article after category update")
+		return nil, errmsg.ErrDatabase // Should not happen ideally
+	}
+
+	return updatedArticle.ToDetailResponseDTO(), nil
 }

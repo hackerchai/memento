@@ -76,6 +76,10 @@ var (
 
 	// Article Errors (02xxx)
 	ErrArticleConflict = New(http.StatusConflict, "02001", "Article already exists")
+	ErrArticleNotFound = New(http.StatusNotFound, "02001", "Article not found")
+
+	// Category/Tag Errors (03xxx)
+	ErrCategoryNotFound = New(http.StatusNotFound, "03001", "Category not found")
 
 	// Add more error types here
 )
