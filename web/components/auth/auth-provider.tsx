@@ -26,7 +26,7 @@ interface AuthContextType {
 }
 
 // Public routes that don't require authentication
-const publicRoutes = ["/", "/login", "/register"];
+const publicRoutes = ["/", "/login", "/register", "/profile"];
 
 // Create authentication context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -54,6 +54,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsAuthenticated(false);
           // Redirect to login if not on a public route
           if (!publicRoutes.includes(pathname as string) && pathname !== null) {
+            // Save the intended path for redirect after login
+            if (typeof window !== 'undefined') {
+              localStorage.setItem("intendedPath", pathname);
+            }
             router.push("/login");
           }
           return;
@@ -61,26 +65,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         // Validate token validity
         const profileResponse = await userAPI.getProfile();
-        if (profileResponse?.data) {
-          setUser(profileResponse.data.data);
+        
+        // Check and safely extract user data
+        const userData = profileResponse?.data?.data || profileResponse?.data;
+        
+        if (userData) {
+          // Also store user data in localStorage for faster access (optional)
+          localStorage.setItem("mementoUser", JSON.stringify(userData));
+          setUser(userData);
           setIsAuthenticated(true);
         } else {
+          console.error('No user data found in profile response:', profileResponse);
           // Invalid token, clear it
           localStorage.removeItem("mementoToken");
+          localStorage.removeItem("mementoUser");
           setUser(null);
           setIsAuthenticated(false);
           // Redirect to login if not on a public route
           if (!publicRoutes.includes(pathname as string) && pathname !== null) {
+            // Save the intended path for redirect after login
+            if (typeof window !== 'undefined') {
+              localStorage.setItem("intendedPath", pathname);
+            }
             router.push("/login");
           }
         }
       } catch (error) {
         console.error("Authentication check failed:", error);
         localStorage.removeItem("mementoToken");
+        localStorage.removeItem("mementoUser");
         setUser(null);
         setIsAuthenticated(false);
         // Redirect to login if not on a public route
         if (!publicRoutes.includes(pathname as string) && pathname !== null) {
+          // Save the intended path for redirect after login
+          if (typeof window !== 'undefined') {
+            localStorage.setItem("intendedPath", pathname);
+          }
           router.push("/login");
         }
       } finally {
@@ -103,8 +124,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("mementoToken", response.data.token);
         setUser(response.data.user);
         setIsAuthenticated(true);
-        // Redirect to articles page after successful login
-        router.push("/articles");
+        
+        // Check if user was trying to access a specific page before login
+        const intendedPath = localStorage.getItem("intendedPath");
+        if (intendedPath) {
+          localStorage.removeItem("intendedPath");
+          router.push(intendedPath);
+        } else {
+          // Redirect to articles page after successful login if no intended path
+          router.push("/articles");
+        }
       } else {
         throw new Error("Login failed: Invalid response");
       }

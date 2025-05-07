@@ -39,20 +39,15 @@ export function ArticleGrid({ initialFilters = {} }: ArticleGridProps) {
       // Map React prop names to API parameter names
       if (initialFilters.isRead !== undefined) {
         filterOptions.is_read = initialFilters.isRead;
-        console.log(`ArticleGrid: Filtering for ${initialFilters.isRead ? "read" : "unread"} articles`);
       }
       
       if (initialFilters.isStarred !== undefined) {
         filterOptions.is_starred = initialFilters.isStarred;
-        console.log(`ArticleGrid: Filtering for ${initialFilters.isStarred ? "starred" : "non-starred"} articles`);
       }
       
-      // Log the request
-      console.log(`ArticleGrid: Fetching articles (page=${currentPage}, filters=`, filterOptions, ")");
       
       // Use API client to fetch articles
       const response = await articleAPI.listArticles(currentPage, perPage, filterOptions);
-      console.log("ArticleGrid: Received response", response);
       
       // Process the response
       let articlesArray = [];
@@ -122,12 +117,10 @@ export function ArticleGrid({ initialFilters = {} }: ArticleGridProps) {
 
   // On mount, fetch articles with initial filters
   useEffect(() => {
-    console.log("ArticleGrid: Mounted with initialFilters:", initialFilters);
     fetchArticles(1, false);
     
     // Clean up function
     return () => {
-      console.log("ArticleGrid: Unmounting");
     };
   }, []); // Empty dependency array, we only fetch on mount
 

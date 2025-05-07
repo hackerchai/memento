@@ -11,9 +11,19 @@ import {
   LogOutIcon, 
   LogInIcon,
   TagIcon,
-  PlusCircleIcon
+  PlusCircleIcon,
+  KeyIcon,
+  UserCircleIcon
 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Header() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -71,21 +81,43 @@ export default function Header() {
               <span className="hidden md:inline-block text-sm text-muted-foreground mr-2">
                 {user?.name}
               </span>
-              <Link href="/profile">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                >
-                  <UserIcon className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={logout}
-              >
-                <LogOutIcon className="h-4 w-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    className="relative rounded-full h-8 w-8 overflow-hidden"
+                  >
+                    <UserCircleIcon className="h-8 w-8" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col">
+                      <span>{user?.name}</span>
+                      <span className="text-xs text-muted-foreground">{user?.email}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="w-full cursor-pointer flex items-center">
+                      <UserIcon className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile?tab=account" className="w-full cursor-pointer flex items-center">
+                      <KeyIcon className="mr-2 h-4 w-4" />
+                      <span>Reset Password</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="cursor-pointer">
+                    <LogOutIcon className="mr-2 h-4 w-4" />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           ) : (
             <>

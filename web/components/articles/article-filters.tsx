@@ -52,13 +52,7 @@ export function ArticleFilters({
         filtersToApi.isStarred = true;
       }
       
-      console.log(
-        "ArticleFilters: sending filters to parent:",
-        filtersToApi,
-        "UI intent:",
-        isReadFilter ? "Show unread articles only" : "Show all articles (no read status filter)",
-        isStarredFilter ? "Show starred articles only" : "Show all articles (no starred filter)"
-      );
+
       onFilterChange(filtersToApi);
     }
   }, [isReadFilter, isStarredFilter, onFilterChange]);

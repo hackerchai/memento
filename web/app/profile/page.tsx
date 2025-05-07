@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,7 +16,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { toast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   Card,
@@ -38,34 +38,58 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Redirect to login if not logged in
-  if (!user) {
-    router.push("/login");
-    return null;
-  }
-
+  const [activeTab, setActiveTab] = useState("profile");
+  const { toast } = useToast();
+  
+  // Define form even if user is null initially - we'll update it when user loads
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: user.name,
-      email: user.email,
+      name: user?.name || "",
+      email: user?.email || "",
     },
   });
 
+  // Update form values when user data changes
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        name: user.name,
+        email: user.email,
+      });
+    }
+  }, [user, form]);
+  
+  // Set active tab from URL params
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "account") {
+      setActiveTab("account");
+    }
+  }, [searchParams]);
+
+  // No longer redirecting from profile page - auth provider handles this
+  // This prevents redirect loops and allows the profile page to render
+  
   const onSubmit = async (data: ProfileFormValues) => {
     setIsSubmitting(true);
     try {
+      // Track whether any updates were made
+      let updatedFields = [];
+      
       // Update user information
-      if (data.name !== user.name) {
+      if (user && data.name !== user.name) {
         await userAPI.updateName(data.name);
+        updatedFields.push("name");
       }
       
-      if (data.email !== user.email) {
+      if (user && data.email !== user.email) {
         await userAPI.updateEmail(data.email);
+        updatedFields.push("email");
       }
       
       // Update locally stored user information
@@ -77,10 +101,13 @@ export default function ProfilePage() {
         localStorage.setItem("mementoUser", JSON.stringify(userData));
       }
       
-      toast({
-        title: "Profile updated",
-        description: "Your profile has been successfully updated.",
-      });
+      // Only show toast if something was actually updated
+      if (updatedFields.length > 0) {
+        toast({
+          title: "Profile updated",
+          description: `Your profile ${updatedFields.join(" and ")} has been successfully updated.`,
+        });
+      }
     } catch (error) {
       console.error("Error updating profile:", error);
       toast({
@@ -92,7 +119,33 @@ export default function ProfilePage() {
       setIsSubmitting(false);
     }
   };
+  
+  // Loading and authentication states with more detailed messages
+  if (isLoading) {
+    return (
+      <div className="container mx-auto max-w-3xl px-4 py-8 flex justify-center items-center min-h-[50vh]">
+        <p className="animate-pulse">Loading user data...</p>
+      </div>
+    );
+  }
 
+  if (!isAuthenticated) {
+    return (
+      <div className="container mx-auto max-w-3xl px-4 py-8 flex justify-center items-center min-h-[50vh]">
+        <p>Please log in to view your profile. Redirecting to login...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="container mx-auto max-w-3xl px-4 py-8 flex justify-center items-center min-h-[50vh]">
+        <p>Loading user profile data...</p>
+      </div>
+    );
+  }
+
+  // Main render content
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8">
       <div className="mb-8">
@@ -102,7 +155,7 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      <Tabs defaultValue="profile">
+      <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6 grid w-full grid-cols-2 md:w-[400px]">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
@@ -174,7 +227,7 @@ export default function ProfilePage() {
                   <div>
                     <div className="text-sm font-medium">Account Type</div>
                     <div className="text-sm text-muted-foreground">
-                      {user.role === "root" ? "Administrator" : "Regular User"}
+                      {user?.role === "root" ? "Administrator" : "Regular User"}
                     </div>
                   </div>
                 </div>
@@ -185,11 +238,11 @@ export default function ProfilePage() {
                     <div className="text-sm font-medium">Registration Date</div>
                     <div className="text-sm text-muted-foreground">
                       {(() => {
-                        if (user.createdAt) {
+                        if (user?.created_at) {
                           try {
-                            return format(new Date(user.createdAt), "MMMM d, yyyy");
+                            return format(new Date(user.created_at), "MMMM d, yyyy");
                           } catch (error) {
-                            console.error("Error formatting date:", error, user.createdAt);
+                            console.error("Error formatting date:", error, user.created_at);
                             return "Invalid date format";
                           }
                         } else {
@@ -201,6 +254,12 @@ export default function ProfilePage() {
                 </div>
               </div>
               
+              {/* Password Reset Form */}
+              <div className="mt-6 pt-6 border-t">
+                <h3 className="mb-4 text-lg font-medium">Change Password</h3>
+                <PasswordResetForm />
+              </div>
+              
               <div className="mt-6 pt-6 border-t">
                 <h3 className="mb-4 text-lg font-medium">Danger Zone</h3>
                 <Button variant="destructive">Delete Account</Button>
@@ -210,5 +269,108 @@ export default function ProfilePage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// Password Reset Form Component
+const passwordResetSchema = z.object({
+  oldPassword: z.string().min(6, "Old password must be at least 6 characters"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+  confirmPassword: z.string().min(6, "Password must be at least 6 characters")
+}).refine(data => data.newPassword === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"]
+});
+
+type PasswordResetFormValues = z.infer<typeof passwordResetSchema>;
+
+function PasswordResetForm() {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
+  
+  // Always define form at the top of the component to avoid React Hooks errors
+  const form = useForm<PasswordResetFormValues>({
+    resolver: zodResolver(passwordResetSchema),
+    defaultValues: {
+      oldPassword: "",
+      newPassword: "",
+      confirmPassword: ""
+    }
+  });
+  
+  const onSubmit = async (data: PasswordResetFormValues) => {
+    setIsSubmitting(true);
+    try {
+      await userAPI.updatePassword(data.oldPassword, data.newPassword);
+      
+      toast({
+        title: "Password updated",
+        description: "Your password has been successfully updated.",
+      });
+      
+      // Reset form after successful submission
+      form.reset();
+    } catch (error) {
+      console.error("Error updating password:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update password. Please make sure your old password is correct.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="oldPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Current Password</FormLabel>
+              <FormControl>
+                <Input type="password" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="newPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>New Password</FormLabel>
+              <FormControl>
+                <Input type="password" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Confirm New Password</FormLabel>
+              <FormControl>
+                <Input type="password" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Updating..." : "Update Password"}
+        </Button>
+      </form>
+    </Form>
   );
 }
