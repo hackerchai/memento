@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BookmarkIcon } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useRouter } from "next/navigation";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -39,7 +40,20 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<string>("login");
-  const { login, register, isLoading, error } = useAuth();
+  const { login, register, isLoading, isAuthenticated, error, clearError } = useAuth();
+  const router = useRouter();
+  
+  // Check if user is already logged in, if so redirect to articles page
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push("/articles");
+    }
+  }, [isAuthenticated, router]);
+
+  // Clear errors when switching tabs
+  useEffect(() => {
+    clearError();
+  }, [activeTab, clearError]);
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
