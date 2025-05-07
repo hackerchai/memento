@@ -10,7 +10,8 @@ import {
   SettingsIcon, 
   LogOutIcon, 
   LogInIcon,
-  TagIcon
+  TagIcon,
+  PlusCircleIcon
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -52,20 +53,32 @@ export default function Header() {
         </div>
         
         <div className="flex items-center gap-2">
+          {isAuthenticated && (
+            <Link href="/add-article">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="mr-2 items-center"
+              >
+                <PlusCircleIcon className="h-4 w-4 mr-1" />
+                Add Article
+              </Button>
+            </Link>
+          )}
+          
           {isAuthenticated ? (
             <>
               <span className="hidden md:inline-block text-sm text-muted-foreground mr-2">
                 {user?.name}
               </span>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                asChild
-              >
-                <Link href="/profile">
+              <Link href="/profile">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                >
                   <UserIcon className="h-4 w-4" />
-                </Link>
-              </Button>
+                </Button>
+              </Link>
               <Button 
                 variant="ghost" 
                 size="icon"
@@ -76,17 +89,17 @@ export default function Header() {
             </>
           ) : (
             <>
-              <Button variant="ghost" asChild>
-                <Link href="/login">
+              <Link href="/login">
+                <Button variant="ghost">
                   <LogInIcon className="mr-2 h-4 w-4" />
                   Login
-                </Link>
-              </Button>
-              <Button variant="default" asChild>
-                <Link href="/register">
+                </Button>
+              </Link>
+              <Link href="/register">
+                <Button variant="default">
                   Register
-                </Link>
-              </Button>
+                </Button>
+              </Link>
             </>
           )}
         </div>
