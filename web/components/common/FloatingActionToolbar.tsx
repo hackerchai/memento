@@ -29,6 +29,7 @@ import {
   X as XIcon,
   FolderIcon,
   Loader2Icon,
+  ExternalLink as ExternalLinkIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,7 @@ interface DetailedArticle {
     name: string;
     slug: string;
   } | string;
+  url?: string;
 }
 
 // Define props interface for component
@@ -519,6 +521,19 @@ export default function FloatingActionToolbar({
     }
   };
 
+  // Handle opening the article URL in a new tab
+  const handleOpenArticleUrl = () => {
+    if (localArticle.url) {
+      window.open(localArticle.url, '_blank', 'noopener,noreferrer');
+    } else {
+      toast({
+        title: "URL not available",
+        description: "This article doesn't have a source URL",
+        variant: "destructive"
+      });
+    }
+  };
+
   const articleTags = getArticleTags();
   const currentCategoryName = getCurrentCategoryName();
 
@@ -559,6 +574,16 @@ export default function FloatingActionToolbar({
       {/* Expanded toolbar */}
       {isExpanded && (
         <div className="flex flex-col gap-2 mb-2 items-center">
+          {/* Open Original URL button - Added as the topmost button */}
+          <Button
+            onClick={handleOpenArticleUrl}
+            disabled={isLoading || !localArticle.url}
+            className="h-10 w-10 rounded-full shadow-md bg-indigo-600 hover:bg-indigo-700"
+            title="Open original article"
+          >
+            <ExternalLinkIcon className="h-5 w-5" />
+          </Button>
+          
           {/* Read/Unread button */}
           <Button
             onClick={handleToggleRead}
