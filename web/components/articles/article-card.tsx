@@ -121,7 +121,7 @@ export function ArticleCard({ article, onDelete }: ArticleCardProps) {
   };
 
   // Fallback image for articles without an image
-  const imageUrl = localArticle.ogImage || "https://source.unsplash.com/random/800x600?article";
+  const imageUrl = localArticle.ogImage || "https://placehold.co/600x400/EEE/31343C?text=Memento";
 
   return (
     <Link href={`/articles/${localArticle.id}`}>
