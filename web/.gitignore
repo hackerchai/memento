@@ -1,0 +1,27 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# PNPM
+pnpm-lock.yaml
+
+# Next.js
+/.next/
+/out/
+/build
+
+# Production artifacts
+.next/static/
+.next/server/
+
+# Local development
+.env*.local
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
