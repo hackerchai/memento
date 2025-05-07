@@ -109,23 +109,18 @@ export default function FloatingActionToolbar({
 
   useEffect(() => {
     if (!updatingField) {
-      // console.log('FloatingActionToolbar: Article prop changed, updating localArticle');
       setLocalArticle(article);
-    } else {
-      // console.log('FloatingActionToolbar: Ignoring article prop change while updating status locally');
     }
   }, [article, updatingField]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Node;
-      console.log("handleClickOutside triggered. Target:", target);
       
       if (
         (tagsTriggerRef.current && tagsTriggerRef.current.contains(target)) ||
         (categoryTriggerRef.current && categoryTriggerRef.current.contains(target))
       ) {
-        console.log("handleClickOutside: Click on a trigger button, doing nothing.");
         return;
       }
       
@@ -133,12 +128,7 @@ export default function FloatingActionToolbar({
       const isOutsideTagsDialog = !tagsDialogContentRef.current || !tagsDialogContentRef.current.contains(target);
       const isOutsideCategoryPopover = !categoryPopoverContentRef.current || !categoryPopoverContentRef.current.contains(target);
 
-      console.log("handleClickOutside: isOutsideToolbar:", isOutsideToolbar);
-      console.log("handleClickOutside: isOutsideTagsDialog:", isOutsideTagsDialog);
-      console.log("handleClickOutside: isOutsideCategoryPopover:", isOutsideCategoryPopover);
-
       if (isOutsideToolbar && isOutsideTagsDialog && isOutsideCategoryPopover) {
-        console.log("handleClickOutside: Conditions met to set isExpanded to false.");
         setIsExpanded(false);
       }
     };
@@ -147,7 +137,7 @@ export default function FloatingActionToolbar({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []); // Empty dependency array is correct here as refs' .current property is accessed dynamically
+  }, []);
 
   // Reset tag selection when dialog opens
   useEffect(() => {
@@ -290,9 +280,7 @@ export default function FloatingActionToolbar({
         isRead: newStatus
       }));
       
-      console.log("[FloatingActionToolbar] Attempting to call onUpdateStatus for isRead:", { articleId: localArticle.id, newStatus });
       await onUpdateStatus({ is_read: newStatus });
-      console.log("[FloatingActionToolbar] onUpdateStatus call completed for isRead.");
       
       toast({
         title: newStatus ? "Article marked as read" : "Article marked as unread",
@@ -337,9 +325,7 @@ export default function FloatingActionToolbar({
         isStarred: newStatus
       }));
       
-      console.log("[FloatingActionToolbar] Attempting to call onUpdateStatus for isStarred:", { articleId: localArticle.id, newStatus });
       await onUpdateStatus({ is_starred: newStatus });
-      console.log("[FloatingActionToolbar] onUpdateStatus call completed for isStarred.");
       
       toast({
         title: newStatus ? "Article starred" : "Article unstarred",
@@ -540,7 +526,6 @@ export default function FloatingActionToolbar({
   // Reset tagsDialogOpen and categoryPopoverOpen when component expands/collapses
   useEffect(() => {
     if (!isExpanded) {
-      console.log("isExpanded changed to:", isExpanded, "Setting tagsDialogOpen and categoryPopoverOpen to false.");
       setTagsDialogOpen(false);
       setCategoryPopoverOpen(false);
     }
@@ -563,12 +548,11 @@ export default function FloatingActionToolbar({
       {/* Main floating button */}
       <Button
         onClick={() => {
-          console.log("Main toolbar button clicked. Current isExpanded:", isExpanded, "New isExpanded:", !isExpanded);
           setIsExpanded(!isExpanded)
         }}
-        className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90"
+        className="h-16 w-16 rounded-full shadow-lg bg-primary hover:bg-primary/90"
       >
-        <BookmarkIcon className="h-6 w-6" />
+        <BookmarkIcon className="h-8 w-8" />
       </Button>
 
       {/* Expanded toolbar */}
@@ -578,10 +562,10 @@ export default function FloatingActionToolbar({
           <Button
             onClick={handleOpenArticleUrl}
             disabled={isLoading || !localArticle.url}
-            className="h-10 w-10 rounded-full shadow-md bg-indigo-600 hover:bg-indigo-700"
+            className="h-12 w-12 rounded-full shadow-md bg-indigo-600 hover:bg-indigo-700"
             title="Open original article"
           >
-            <ExternalLinkIcon className="h-5 w-5" />
+            <ExternalLinkIcon className="h-6 w-6" />
           </Button>
           
           {/* Read/Unread button */}
@@ -589,7 +573,7 @@ export default function FloatingActionToolbar({
             onClick={handleToggleRead}
             disabled={isLoading}
             className={cn(
-              "h-10 w-10 rounded-full shadow-md", 
+              "h-12 w-12 rounded-full shadow-md", 
               localArticle.isRead 
                 ? "bg-blue-600 hover:bg-blue-700" 
                 : "bg-slate-600 hover:bg-slate-700"
@@ -597,8 +581,8 @@ export default function FloatingActionToolbar({
             title={localArticle.isRead ? "Mark as unread" : "Mark as read"}
           >
             {localArticle.isRead ? 
-              <BookOpenIcon className="h-5 w-5" /> : 
-              <BookClosedIcon className="h-5 w-5" />
+              <BookOpenIcon className="h-6 w-6" /> : 
+              <BookClosedIcon className="h-6 w-6" />
             }
           </Button>
           
@@ -607,14 +591,14 @@ export default function FloatingActionToolbar({
             onClick={handleToggleStar}
             disabled={isLoading}
             className={cn(
-              "h-10 w-10 rounded-full shadow-md", 
+              "h-12 w-12 rounded-full shadow-md", 
               localArticle.isStarred 
                 ? "bg-amber-500 hover:bg-amber-600" 
                 : "bg-slate-600 hover:bg-slate-700"
             )}
             title={localArticle.isStarred ? "Remove star" : "Add star"}
           >
-            <StarIcon className={cn("h-5 w-5", localArticle.isStarred && "fill-white")} />
+            <StarIcon className={cn("h-6 w-6", localArticle.isStarred && "fill-white")} />
           </Button>
 
           {/* Tags dialog - modified to handle proper event flow */}
@@ -631,10 +615,10 @@ export default function FloatingActionToolbar({
               ref={tagsTriggerRef}
               onClick={toggleTagsDialog}
               disabled={isLoading}
-              className="h-10 w-10 rounded-full shadow-md bg-blue-600 hover:bg-blue-700"
+              className="h-12 w-12 rounded-full shadow-md bg-blue-600 hover:bg-blue-700"
               title="Manage tags"
             >
-              <TagIcon className="h-5 w-5" />
+              <TagIcon className="h-6 w-6" />
             </Button>
             <DialogContent 
               ref={tagsDialogContentRef}
@@ -734,7 +718,7 @@ export default function FloatingActionToolbar({
                       size="sm" 
                       type="button"
                     >
-                      <PlusIcon className="h-4 w-4 mr-1" />
+                      <PlusIcon className="h-5 w-5 mr-1" />
                       Add
                     </Button>
                   </div>
@@ -798,12 +782,9 @@ export default function FloatingActionToolbar({
           <Popover 
             open={categoryPopoverOpen} 
             onOpenChange={(isOpen) => {
-              console.log("Category Popover onOpenChange called. isOpen:", isOpen, "Current categoryPopoverOpen before set:", categoryPopoverOpen);
               setCategoryPopoverOpen(isOpen);
-              console.log("Category Popover onOpenChange: categoryPopoverOpen set to:", isOpen);
               if (isOpen) { 
                 setTagsDialogOpen(false);
-                console.log("Category Popover onOpenChange: tagsDialogOpen set to false because Popover is opening.");
               }
             }}
           >
@@ -811,14 +792,13 @@ export default function FloatingActionToolbar({
               <Button
                 ref={categoryTriggerRef}
                 onClick={() => {
-                  console.log("Category <Button> (inside PopoverTrigger) clicked. Current isExpanded:", isExpanded, "Current categoryPopoverOpen:", categoryPopoverOpen);
                   // Let Popover's onOpenChange handle the state.
                 }}
                 disabled={isLoading}
-                className="h-10 w-10 rounded-full shadow-md bg-green-600 hover:bg-green-700"
+                className="h-12 w-12 rounded-full shadow-md bg-green-600 hover:bg-green-700"
                 title="Change category"
               >
-                <FolderIcon className="h-5 w-5" />
+                <FolderIcon className="h-6 w-6" />
               </Button>
             </PopoverTrigger>
             <PopoverContent 
@@ -859,7 +839,7 @@ export default function FloatingActionToolbar({
                         >
                           <span className="flex-1">{category.name}</span>
                           {currentCategoryName === category.name && (
-                            <CheckIcon className="ml-auto h-4 w-4 text-green-600" />
+                            <CheckIcon className="ml-auto h-5 w-5 text-green-600" />
                           )}
                         </CommandItem>
                       ))}
@@ -899,9 +879,9 @@ export default function FloatingActionToolbar({
                         disabled={!newCategoryName.trim() || isCreatingCategory}
                       >
                         {isCreatingCategory ? (
-                          <Loader2Icon className="h-4 w-4 animate-spin" />
+                          <Loader2Icon className="h-5 w-5 animate-spin" />
                         ) : (
-                          <PlusIcon className="h-4 w-4" />
+                          <PlusIcon className="h-5 w-5" />
                         )}
                       </Button>
                     </div>
@@ -916,10 +896,10 @@ export default function FloatingActionToolbar({
           <Button
             onClick={handleRescrape}
             disabled={isLoading}
-            className="h-10 w-10 rounded-full shadow-md bg-purple-600 hover:bg-purple-700"
+            className="h-12 w-12 rounded-full shadow-md bg-purple-600 hover:bg-purple-700"
             title="Rescrape article"
           >
-            <RefreshCwIcon className="h-5 w-5" />
+            <RefreshCwIcon className="h-6 w-6" />
           </Button>
         </div>
       )}

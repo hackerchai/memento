@@ -109,17 +109,9 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
   useEffect(() => {
     // Update current article when prop changes, but intelligently
     if (article) {
-      console.log('ArticleDetail: Article prop changed, updating currentArticle:', {
-        id: article.id,
-        isRead: article.isRead, 
-        isStarred: article.isStarred
-      });
-      
       // Only update if we're not in the middle of our own update
       if (!updatingFields) {
         setCurrentArticle(article);
-      } else {
-        console.log('ArticleDetail: Ignoring article update while making local changes', updatingFields);
       }
     }
     
@@ -173,11 +165,8 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
   
   // Handle article status updates with proper sequence
   const handleUpdateStatus = useCallback(async (status: { is_read?: boolean; is_starred?: boolean }) => {
-    console.log("[ArticleDetail] handleUpdateStatus called with status:", status, "and currentArticle ID:", currentArticle?.id);
-
     if (!currentArticle) {
       console.error('ArticleDetail: Cannot update status, currentArticle is null');
-      console.log("[ArticleDetail] currentArticle is null, returning early from handleUpdateStatus.");
       return;
     }
     
@@ -185,7 +174,6 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
       setIsRefetching(true);
       
       setUpdatingFields(status);
-      // console.log('ArticleDetail: Updating status locally:', status);
       
       setCurrentArticle(prev => {
         if (!prev) return null;
@@ -196,9 +184,7 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
         };
       });
       
-      console.log("[ArticleDetail] Attempting to call articleAPI.updateArticleStatus with ID:", currentArticle.id, "and status:", status);
       await articleAPI.updateArticleStatus(currentArticle.id, status);
-      console.log("[ArticleDetail] articleAPI.updateArticleStatus call completed.");
       
       toast({
         title: status.is_read !== undefined 
@@ -246,7 +232,6 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
     } finally {
       setIsRefetching(false);
       setUpdatingFields(null);
-      console.log("[ArticleDetail] handleUpdateStatus finally block executed.");
     }
   }, [currentArticle, toast, onRefetch, article]);
   
@@ -259,7 +244,6 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
       
       // Mark that we're updating category
       setUpdatingFields({ category: categoryName });
-      console.log('ArticleDetail: Updating category locally:', categoryName);
       
       // Update local state immediately
       setCurrentArticle(prev => {
@@ -328,7 +312,6 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
       
       // Mark that we're updating tags
       setUpdatingFields({ tags: true });
-      console.log('ArticleDetail: Adding tags locally:', tags);
       
       // Extract existing tags
       const existingTags = Array.isArray(currentArticle.tags) 
@@ -403,7 +386,6 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
       
       // Mark that we're updating tags
       setUpdatingFields({ tags: true });
-      console.log('ArticleDetail: Removing tags locally:', tags);
       
       // Extract existing tags
       const existingTags = Array.isArray(currentArticle.tags) 
@@ -482,7 +464,6 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
       // We don't need to update any fields locally for rescrape
       // but we'll mark it to prevent race conditions
       setUpdatingFields({ rescrape: true });
-      console.log('ArticleDetail: Initiating rescrape for article:', currentArticle.id);
       
       // Call API to rescrape article
       await articleAPI.rescrapeArticle(currentArticle.id);
@@ -514,39 +495,24 @@ export default function ArticleDetail({ article, isLoading = false, onRefetch }:
 
   // Wrap onRefetch with logging
   const handleRefetch = useCallback(async () => {
-    console.log("ArticleDetail: Starting manual refetch");
     setIsRefetching(true);
     
     try {
       if (onRefetch) {
-        console.log("ArticleDetail: Calling parent onRefetch function");
         await onRefetch();
-        console.log("ArticleDetail: Parent onRefetch completed successfully");
         
         // Check if we need to update current article state again
         if (article && currentArticle && (
           article.isRead !== currentArticle.isRead || 
           article.isStarred !== currentArticle.isStarred
         )) {
-          console.log("ArticleDetail: Detected state difference after refetch, updating currentArticle");
-          console.log("ArticleDetail: New article state:", {
-            isRead: article.isRead,
-            isStarred: article.isStarred
-          });
-          console.log("ArticleDetail: Current article state:", {
-            isRead: currentArticle.isRead,
-            isStarred: currentArticle.isStarred
-          });
           setCurrentArticle(article);
         }
-      } else {
-        console.log("ArticleDetail: No onRefetch function provided");
       }
     } catch (error) {
       console.error("ArticleDetail: Error during refetch:", error);
     } finally {
       setIsRefetching(false);
-      console.log("ArticleDetail: Manual refetch completed");
     }
   }, [onRefetch, article, currentArticle]);
 

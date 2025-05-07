@@ -20,8 +20,6 @@ const getAuthHeaders = (): HeadersInit => {
 
 // Error handler
 const handleResponse = async (response: Response) => {
-  console.log(`API Client: Handling response from ${response.url}, status: ${response.status}`);
-  
   if (!response.ok) {
     try {
       const data = await response.json();
@@ -46,21 +44,9 @@ const handleResponse = async (response: Response) => {
   }
 
   try {
-    console.log(`API Client: Parsing JSON from successful response`);
     const data = await response.json();
-    console.log(`API Client: Parsed JSON data:`, data);
     return data;
   } catch (jsonError) {
-    console.log('API Client: Response contains no JSON, returning empty success object');
-    
-    // Try to get text response for debugging
-    try {
-      const textResponse = await response.clone().text();
-      console.log(`API Client: Non-JSON response text:`, textResponse);
-    } catch (textError) {
-      console.error(`API Client: Could not get response text:`, textError);
-    }
-    
     return { success: true };
   }
 };
@@ -156,18 +142,12 @@ export const articleAPI = {
     let url = `${API_BASE_URL}/articles?page=${page}&per_page=${perPage}`;
     
     if (filters) {
-      console.log("API client: received filters:", filters);
-      
       // Handle filter conditions (is_read and is_starred)
       // API parameter meaning:
       // is_read=true: Get read articles
       // is_read=false: Get unread articles
       if (filters.is_read !== undefined) {
         url += `&is_read=${filters.is_read}`;
-        console.log("API client: adding is_read=" + filters.is_read + 
-                   " to URL, which will return " + (filters.is_read ? "read" : "unread") + " articles");
-      } else {
-        console.log("API client: is_read filter not provided, showing all articles (read status)");
       }
       
       // API parameter meaning:
@@ -175,16 +155,8 @@ export const articleAPI = {
       // is_starred=false: Get non-starred articles
       if (filters.is_starred !== undefined) {
         url += `&is_starred=${filters.is_starred}`;
-        console.log("API client: adding is_starred=" + filters.is_starred + 
-                   " to URL, which will return " + (filters.is_starred ? "starred" : "non-starred") + " articles");
-      } else {
-        console.log("API client: is_starred filter not provided, showing all articles (starred status)");
       }
-    } else {
-      console.log("API client: no filters provided, showing all articles");
     }
-    
-    console.log("API client: final URL:", url);
     
     const response = await fetch(url, {
       headers: getAuthHeaders(),
@@ -223,8 +195,6 @@ export const articleAPI = {
   },
   
   updateArticleStatus: async (id: string, status: { is_read?: boolean, is_starred?: boolean }) => {
-    console.log(`API Client: Updating article ${id} status:`, status);
-    
     // Verify parameters
     if (!id) {
       console.error('API Client: Missing article ID for updateArticleStatus');
@@ -238,57 +208,36 @@ export const articleAPI = {
     }
     
     try {
-      // Log request details
-      console.log(`API Client: Sending PATCH request to ${API_BASE_URL}/articles/${id} with body:`, JSON.stringify(status));
-      console.log('API Client: Using headers:', getAuthHeaders());
-      
       const response = await fetch(`${API_BASE_URL}/articles/${id}`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify(status),
       });
       
-      console.log(`API Client: Raw status update response:`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        url: response.url,
-        headers: Object.fromEntries(response.headers.entries()) // Log headers as an object
-      });
-
       let responseBody = null;
       try {
         const clonedResponse = response.clone();
         const contentType = clonedResponse.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           responseBody = await clonedResponse.json();
-          console.log(`API Client: Parsed JSON response body:`, responseBody);
         } else {
           responseBody = await clonedResponse.text();
-          console.log(`API Client: Received non-JSON response body (text):`, responseBody);
         }
       } catch (e) {
         console.error(`API Client: Error parsing response body:`, e);
         try {
-          const textBody = await response.text(); 
-          console.log(`API Client: Fallback text response body after parse error:`, textBody);
+          const textBody = await response.text();
         } catch (textErr) {
           console.error(`API Client: Error reading text body after JSON parse error:`, textErr);
         }
       }
       
-      // const result = await handleResponse(response); // Temporarily commented out
-      // console.log(`API Client: Status update result (from handleResponse):`, result); // Temporarily commented out
-      
       if (response.ok) {
         if (responseBody && typeof responseBody === 'object' && responseBody !== null && 'data' in responseBody) {
-             console.log(`API Client: Returning responseBody.data due to response.ok and 'data' field presence.`);
              return (responseBody as any).data; 
         } else if (responseBody) {
-            console.log(`API Client: Returning full responseBody due to response.ok but no 'data' field or non-object.`);
             return responseBody;
         }
-        console.log(`API Client: Returning {success: true} due to response.ok and no parsable body with 'data'.`);
         return { success: true }; 
     } else {
         console.error(`API Client: Response not OK (${response.status}). Throwing error with body:`, responseBody);
@@ -302,8 +251,6 @@ export const articleAPI = {
 },
   
   updateArticleCategory: async (id: string, category: string) => {
-    console.log(`API Client: Updating article ${id} category to:`, category);
-    
     try {
       const response = await fetch(`${API_BASE_URL}/articles/${id}/category`, {
         method: 'PATCH',
@@ -311,14 +258,7 @@ export const articleAPI = {
         body: JSON.stringify({ category }),
       });
       
-      console.log(`API Client: Category update response:`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-      
       const result = await handleResponse(response);
-      console.log(`API Client: Category update result:`, result);
       return result;
     } catch (error) {
       console.error(`API Client: Error updating article category:`, error);
