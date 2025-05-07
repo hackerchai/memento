@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeftIcon, PlusIcon, SearchIcon, TagIcon } from "lucide-react";
+import { ArrowLeftIcon, PlusIcon, SearchIcon, TagIcon, Trash2Icon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { tagAPI } from "@/lib/api-client";
 import { ArticleCard, ArticleCardSkeleton } from "@/components/articles/article-card";
@@ -13,38 +13,41 @@ import type { Article } from "@/types/article";
 
 export default function TagsPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [tags, setTags] = useState<{ name: string; slug?: string }[]>([]);
+  const [tags, setTags] = useState<{ name: string; slug?: string; id?: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [isArticlesLoading, setIsArticlesLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchTags = async () => {
-      try {
-        const response = await tagAPI.listTags(1, 100);
-        let tagArray: any[] = [];
-        if (response?.data?.data && Array.isArray(response.data.data)) {
-          tagArray = response.data.data;
-        } else if (response?.data?.items && Array.isArray(response.data.items)) {
-          tagArray = response.data.items;
-        } else if (response?.data && Array.isArray(response.data)) {
-          tagArray = response.data;
-        }
-        setTags(tagArray.map((tag: any) => ({ name: tag.name, slug: tag.slug })));
-      } catch (error) {
-        console.error("Failed to fetch tags:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load tags. Please try again later.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchTags();
   }, []);
+  
+  const fetchTags = async () => {
+    try {
+      setIsLoading(true);
+      const response = await tagAPI.listTags(1, 100);
+      let tagArray: any[] = [];
+      if (response?.data?.data && Array.isArray(response.data.data)) {
+        tagArray = response.data.data;
+      } else if (response?.data?.items && Array.isArray(response.data.items)) {
+        tagArray = response.data.items;
+      } else if (response?.data && Array.isArray(response.data)) {
+        tagArray = response.data;
+      }
+      setTags(tagArray.map((tag: any) => ({ name: tag.name, slug: tag.slug, id: tag.id })));
+    } catch (error) {
+      console.error("Failed to fetch tags:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load tags. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleTagClick = async (tagName: string) => {
     setSelectedTag(tagName);
@@ -78,6 +81,47 @@ export default function TagsPage() {
       });
     } finally {
       setIsArticlesLoading(false);
+    }
+  };
+
+  const handleDeleteTag = async (e: React.MouseEvent, tagId: string, tagName: string) => {
+    e.stopPropagation(); // Prevent triggering the tag click event
+    
+    if (!tagId) {
+      toast({
+        title: "Error",
+        description: "Tag ID is missing, unable to delete.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      setIsDeleting(tagId);
+      await tagAPI.deleteTag(tagId);
+      
+      // If currently displaying articles for the deleted tag, clear the article area
+      if (selectedTag === tagName) {
+        setSelectedTag(null);
+        setArticles([]);
+      }
+      
+      // Remove the deleted tag from the list
+      setTags(tags.filter(tag => tag.id !== tagId));
+      
+      toast({
+        title: "Success",
+        description: `Tag "${tagName}" has been deleted.`,
+      });
+    } catch (error) {
+      console.error("Failed to delete tag:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete tag. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -134,7 +178,7 @@ export default function TagsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {filteredTags.map((tag: { name: string; slug?: string }) => (
+          {filteredTags.map((tag: { name: string; slug?: string; id?: string }) => (
             <button
               key={tag.name}
               className={`group flex items-center justify-between rounded-lg border border-border bg-card p-4 transition-colors hover:bg-accent w-full text-left ${selectedTag === tag.name ? 'ring-2 ring-primary' : ''}`}
@@ -146,6 +190,20 @@ export default function TagsPage() {
                   <div className="font-medium">{tag.name}</div>
                 </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => handleDeleteTag(e, tag.id || "", tag.name)}
+                disabled={isDeleting === tag.id}
+              >
+                {isDeleting === tag.id ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <Trash2Icon className="h-4 w-4 text-destructive" />
+                )}
+                <span className="sr-only">Delete tag</span>
+              </Button>
             </button>
           ))}
         </div>
