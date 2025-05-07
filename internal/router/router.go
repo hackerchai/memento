@@ -89,6 +89,7 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	// Root Article routes (nested under root user routes)
 	rootArticleGroup := rootGroup.Group("/articles")                     // --> /api/v1/users/root/articles
 	rootArticleGroup.Get("/user", p.ArticleHandler.ListUserArticlesRoot) // GET /user?user_id=...
+	rootArticleGroup.Get("/search", p.ArticleHandler.SearchArticlesRoot) // Search articles (root)
 	rootArticleGroup.Get("/:id", p.ArticleHandler.GetArticleRoot)
 	rootArticleGroup.Delete("/:id", p.ArticleHandler.DeleteArticleRoot)
 	rootArticleGroup.Post("/:id/rescrape", p.ArticleHandler.ReScrapeArticleRoot)
@@ -99,6 +100,7 @@ func RegisterRoutes(p RegisterRoutesParams) {
 	articleGroup := protected.Group("/articles") // --> /api/v1/articles
 	articleGroup.Post("", p.ArticleHandler.CreateArticle)
 	articleGroup.Get("", p.ArticleHandler.ListArticles)                         // List user's articles
+	articleGroup.Get("/search", p.ArticleHandler.SearchArticles)                // Search user's articles
 	articleGroup.Get("/:id", p.ArticleHandler.GetArticle)                       // Get specific article
 	articleGroup.Delete("/:id", p.ArticleHandler.DeleteArticle)                 // Delete article
 	articleGroup.Patch("/:id", p.ArticleHandler.UpdateArticleStatus)            // Update read/starred

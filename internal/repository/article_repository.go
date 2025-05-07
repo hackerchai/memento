@@ -593,3 +593,100 @@ func (r *ArticleRepository) FindArticlesByTagID(ctx context.Context, tagID uuid.
 	}
 	return articles, count, nil
 }
+
+// SearchArticles finds articles for a specific user based on a search term and filters.
+// It searches in title, description, and plain_text fields.
+func (r *ArticleRepository) SearchArticles(ctx context.Context, userID uuid.UUID, searchTerm string, isRead, isStarred *bool, limit, offset int, loadRelations bool) ([]entity.Article, int, error) {
+	var articles []entity.Article
+	query := r.db.NewSelect().
+		Model(&articles).
+		Where("a.user_id = ?", userID)
+
+	if searchTerm != "" {
+		// Case-insensitive search for SQLite (LIKE is case-insensitive by default for ASCII)
+		// For PostgreSQL, use ILIKE.
+		// Using LOWER() for better cross-DB compatibility for case-insensitive search.
+		searchTermPattern := "%" + strings.ToLower(searchTerm) + "%"
+		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			q = q.WhereOr("LOWER(a.title) LIKE ?", searchTermPattern).
+				WhereOr("LOWER(a.description) LIKE ?", searchTermPattern).
+				WhereOr("LOWER(a.plain_text) LIKE ?", searchTermPattern)
+			return q
+		})
+	}
+
+	// Apply filters
+	if isRead != nil {
+		query = query.Where("a.is_read = ?", *isRead)
+	}
+	if isStarred != nil {
+		query = query.Where("a.is_starred = ?", *isStarred)
+	}
+
+	// Load relations if requested
+	if loadRelations {
+		query = query.Relation("Category").Relation("Tags")
+	}
+
+	// Apply ordering, limit, and offset
+	query = query.Order("a.created_at DESC").Limit(limit).Offset(offset)
+
+	count, err := query.ScanAndCount(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Article{}, 0, nil
+		}
+		r.logger.ErrorX(ctx).Err(err).Stringer("userID", userID).Str("searchTerm", searchTerm).Msg("Failed to search articles by user ID")
+		return nil, 0, err
+	}
+
+	return articles, count, nil
+}
+
+// SearchArticlesRoot finds articles based on a search term and filters, for root users.
+// If targetUserID is provided, search is scoped to that user. Otherwise, searches all articles.
+// It searches in title, description, and plain_text fields.
+func (r *ArticleRepository) SearchArticlesRoot(ctx context.Context, targetUserID *uuid.UUID, searchTerm string, isRead, isStarred *bool, limit, offset int, loadRelations bool) ([]entity.Article, int, error) {
+	var articles []entity.Article
+	query := r.db.NewSelect().Model(&articles)
+
+	if targetUserID != nil && *targetUserID != uuid.Nil {
+		query = query.Where("a.user_id = ?", *targetUserID)
+	}
+
+	if searchTerm != "" {
+		searchTermPattern := "%" + strings.ToLower(searchTerm) + "%"
+		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			q = q.WhereOr("LOWER(a.title) LIKE ?", searchTermPattern).
+				WhereOr("LOWER(a.description) LIKE ?", searchTermPattern).
+				WhereOr("LOWER(a.plain_text) LIKE ?", searchTermPattern)
+			return q
+		})
+	}
+
+	// Apply filters
+	if isRead != nil {
+		query = query.Where("a.is_read = ?", *isRead)
+	}
+	if isStarred != nil {
+		query = query.Where("a.is_starred = ?", *isStarred)
+	}
+
+	// Load relations if requested
+	if loadRelations {
+		query = query.Relation("Category").Relation("Tags")
+	}
+
+	query = query.Order("a.created_at DESC").Limit(limit).Offset(offset)
+
+	count, err := query.ScanAndCount(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []entity.Article{}, 0, nil
+		}
+		r.logger.ErrorX(ctx).Err(err).Str("searchTerm", searchTerm).Msg("[Root] Failed to search articles")
+		return nil, 0, err
+	}
+
+	return articles, count, nil
+}

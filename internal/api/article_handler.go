@@ -577,3 +577,127 @@ func (h *ArticleHandler) UpdateArticleCategory(c *fiber.Ctx) error {
 
 	return response.Respond(c, updatedArticleDTO)
 }
+
+// SearchArticles godoc
+// @Summary Search user's articles
+// @Description Retrieves a paginated list of articles belonging to the authenticated user that match the search query and filters. Search is performed on title, description, and plain text content.
+// @Tags articles
+// @Produce json
+// @Param q query string false "Search term"
+// @Param page query int false "Page number" default(1) minimum(1)
+// @Param per_page query int false "Items per page" default(10) minimum(1) maximum(100)
+// @Param is_read query boolean false "Filter by read status (true/false)"
+// @Param is_starred query boolean false "Filter by starred status (true/false)"
+// @Security BearerAuth
+// @Success 200 {object} response.SuccessResponse{data=response.PaginationResponse{data=[]entity.ArticleResponse}} "Successfully retrieved articles matching search criteria"
+// @Failure 400 {object} response.ErrorResponse{details=map[string]string} "Invalid pagination or filter parameters (code: 00004)"
+// @Failure 401 {object} response.ErrorResponse "Unauthorized (invalid/missing token - code: 01001)"
+// @Failure 500 {object} response.ErrorResponse "Internal server error (code: 00001)"
+// @Router /articles/search [get]
+func (h *ArticleHandler) SearchArticles(c *fiber.Ctx) error {
+	userID, err := middleware.GetUserIDFromContext(c, h.logger)
+	if err != nil {
+		return response.HandleError(c, h.logger, errmsg.ErrUnauthorized.WithDetails("Invalid user session"))
+	}
+
+	var pagination response.PaginationRequest
+	if err := c.QueryParser(&pagination); err != nil {
+		return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"query": "invalid pagination parameters"}))
+	}
+	if err := h.validate.Struct(&pagination); err != nil {
+		return response.HandleError(c, h.logger, err)
+	}
+
+	searchTerm := c.Query("q")
+
+	var isReadFilter *bool
+	if isReadStr := c.Query("is_read"); isReadStr != "" {
+		b, errConv := strconv.ParseBool(isReadStr)
+		if errConv != nil {
+			return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"is_read": "invalid boolean value"}))
+		}
+		isReadFilter = &b
+	}
+
+	var isStarredFilter *bool
+	if isStarredStr := c.Query("is_starred"); isStarredStr != "" {
+		b, errConv := strconv.ParseBool(isStarredStr)
+		if errConv != nil {
+			return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"is_starred": "invalid boolean value"}))
+		}
+		isStarredFilter = &b
+	}
+
+	paginatedResult, err := h.articleService.SearchArticles(c.Context(), userID, searchTerm, &pagination, isReadFilter, isStarredFilter)
+	if err != nil {
+		return response.HandleError(c, h.logger, err)
+	}
+
+	return response.Respond(c, paginatedResult)
+}
+
+// SearchArticlesRoot godoc
+// @Summary Search articles (Root only)
+// @Description Retrieves a paginated list of articles matching search query and filters. Can search all articles or articles of a specific user. Requires root privileges. Search is performed on title, description, and plain text content.
+// @Tags articles,root
+// @Produce json
+// @Param user_id query string false "Target User ID (UUID format). If not provided, searches all users."
+// @Param q query string false "Search term"
+// @Param page query int false "Page number" default(1) minimum(1)
+// @Param per_page query int false "Items per page" default(10) minimum(1) maximum(100)
+// @Param is_read query boolean false "Filter by read status (true/false)"
+// @Param is_starred query boolean false "Filter by starred status (true/false)"
+// @Security BearerAuth
+// @Success 200 {object} response.SuccessResponse{data=response.PaginationResponse{data=[]entity.ArticleResponse}} "Successfully retrieved articles matching search criteria"
+// @Failure 400 {object} response.ErrorResponse{details=map[string]string} "Invalid User ID format or pagination/filter parameters (code: 00004)"
+// @Failure 401 {object} response.ErrorResponse "Unauthorized (invalid/missing token - code: 01001)"
+// @Failure 403 {object} response.ErrorResponse "Forbidden (not root user - code: 01011)"
+// @Failure 500 {object} response.ErrorResponse "Internal server error (code: 00001)"
+// @Router /users/root/articles/search [get]
+func (h *ArticleHandler) SearchArticlesRoot(c *fiber.Ctx) error {
+	// Root check middleware should run before this handler
+
+	var pagination response.PaginationRequest
+	if err := c.QueryParser(&pagination); err != nil {
+		return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"query": "invalid pagination parameters"}))
+	}
+	if err := h.validate.Struct(&pagination); err != nil {
+		return response.HandleError(c, h.logger, err)
+	}
+
+	searchTerm := c.Query("q")
+	targetUserIDStr := c.Query("user_id")
+	var targetUserID *uuid.UUID
+	if targetUserIDStr != "" {
+		parsedUUID, err := uuid.Parse(targetUserIDStr)
+		if err != nil {
+			return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"user_id": "invalid target user ID format"}))
+		}
+		targetUserID = &parsedUUID
+	}
+
+	var isReadFilter *bool
+	if isReadStr := c.Query("is_read"); isReadStr != "" {
+		b, errConv := strconv.ParseBool(isReadStr)
+		if errConv != nil {
+			return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"is_read": "invalid boolean value"}))
+		}
+		isReadFilter = &b
+	}
+
+	var isStarredFilter *bool
+	if isStarredStr := c.Query("is_starred"); isStarredStr != "" {
+		b, errConv := strconv.ParseBool(isStarredStr)
+		if errConv != nil {
+			return response.HandleError(c, h.logger, errmsg.ErrValidation.WithDetails(map[string]string{"is_starred": "invalid boolean value"}))
+		}
+		isStarredFilter = &b
+	}
+
+	paginatedResult, err := h.articleService.SearchArticlesRoot(c.Context(), targetUserID, searchTerm, &pagination, isReadFilter, isStarredFilter)
+	if err != nil {
+		return response.HandleError(c, h.logger, err)
+	}
+
+	return response.Respond(c, paginatedResult)
+}

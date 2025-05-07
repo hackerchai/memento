@@ -30,6 +30,7 @@ import (
 	"github.com/hackerchai/memento/internal/storage"
 	"github.com/hackerchai/memento/pkg/xlog"
 	"github.com/uptrace/bun"
+	"golang.org/x/net/html"
 )
 
 const (
@@ -349,8 +350,20 @@ func (s *ArticleService) fetchAndExtractContent(ctx context.Context, articleURL 
 	// Handle HTML response
 	c.OnResponse(func(r *colly.Response) {
 		rawHTML = string(r.Body)
-		// Use go-readability
-		parsed, err := readability.FromReader(bytes.NewReader(r.Body), r.Request.URL)
+		// Create Parser instance and set KeepClasses to true
+		parser := readability.NewParser()
+		parser.KeepClasses = true
+
+		// Parse the HTML content using Parser
+		doc, err := html.Parse(bytes.NewReader(r.Body))
+		if err != nil {
+			log.ErrorX(ctx).Err(err).Msg("Failed to parse HTML content")
+			errOnce.Do(func() { firstError = fmt.Errorf("html parsing failed: %w", err) })
+			return
+		}
+
+		// Use the Parser instance to parse the document
+		parsed, err := parser.ParseDocument(doc, r.Request.URL)
 		if err != nil {
 			log.ErrorX(ctx).Err(err).Msg("Failed to extract readable content")
 			errOnce.Do(func() { firstError = fmt.Errorf("readability failed: %w", err) })
@@ -998,4 +1011,77 @@ func (s *ArticleService) UpdateArticleCategory(ctx context.Context, articleID, u
 	}
 
 	return updatedArticle.ToDetailResponseDTO(), nil
+}
+
+// SearchArticles retrieves a paginated list of articles for the authenticated user based on search criteria.
+func (s *ArticleService) SearchArticles(ctx context.Context, userID uuid.UUID, searchTerm string, pagination *response.PaginationRequest, isRead, isStarred *bool) (*response.PaginationResponse, error) {
+	log := s.logger.With().Stringer("userID", userID).Str("searchTerm", searchTerm).Logger()
+	if isRead != nil {
+		log = log.With().Bool("is_read_filter", *isRead).Logger()
+	}
+	if isStarred != nil {
+		log = log.With().Bool("is_starred_filter", *isStarred).Logger()
+	}
+
+	limit := pagination.GetLimit()
+	offset := pagination.GetOffset()
+
+	// loadRelations is true by default for list views that return ArticleResponse DTOs with category/tags
+	articles, totalCount, err := s.articleRepo.SearchArticles(ctx, userID, searchTerm, isRead, isStarred, limit, offset, true)
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("Failed to search articles with filters")
+		return nil, errmsg.ErrDatabase
+	}
+
+	articleDTOs := make([]*entity.ArticleResponse, len(articles))
+	for i := range articles {
+		articleDTOs[i] = articles[i].ToResponseDTO()
+	}
+
+	return &response.PaginationResponse{
+		Total: totalCount,
+		Page:  pagination.Page,
+		Data:  articleDTOs,
+	}, nil
+}
+
+// SearchArticlesRoot retrieves a paginated list of articles based on search criteria (Root only).
+// If targetUserID is provided, scope is limited to that user.
+func (s *ArticleService) SearchArticlesRoot(ctx context.Context, targetUserID *uuid.UUID, searchTerm string, pagination *response.PaginationRequest, isRead, isStarred *bool) (*response.PaginationResponse, error) {
+	// Prepare base logger with common fields
+	baseLogger := s.logger.With().Str("searchTerm", searchTerm)
+	if targetUserID != nil {
+		baseLogger = baseLogger.Stringer("targetUserID", *targetUserID)
+	}
+	log := baseLogger.Logger()
+
+	if isRead != nil {
+		log = log.With().Bool("is_read_filter", *isRead).Logger() // This re-scopes log, so subsequent calls might lose context
+	}
+	if isStarred != nil {
+		log = log.With().Bool("is_starred_filter", *isStarred).Logger() // Same here
+	}
+
+	// It's generally better to add all conditional fields to the baseLogger before creating the final log instance
+	// For simplicity here, we'll proceed, but keep in mind for more complex scenarios
+
+	limit := pagination.GetLimit()
+	offset := pagination.GetOffset()
+
+	articles, totalCount, err := s.articleRepo.SearchArticlesRoot(ctx, targetUserID, searchTerm, isRead, isStarred, limit, offset, true)
+	if err != nil {
+		log.ErrorX(ctx).Err(err).Msg("[Root] Failed to search articles")
+		return nil, errmsg.ErrDatabase
+	}
+
+	articleDTOs := make([]*entity.ArticleResponse, len(articles))
+	for i := range articles {
+		articleDTOs[i] = articles[i].ToResponseDTO()
+	}
+
+	return &response.PaginationResponse{
+		Total: totalCount,
+		Page:  pagination.Page,
+		Data:  articleDTOs,
+	}, nil
 }
